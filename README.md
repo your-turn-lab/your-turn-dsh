@@ -36,16 +36,22 @@ Agent 根据实际任务生成路径并上报进度。插件将状态按 Session
 
 ## 从 GitHub 安装
 
+打开 macOS Terminal、Windows PowerShell 或 Linux 终端，在任意目录中逐行执行：
+
 ```bash
-dsh plugin --profile web add github:caracacara22/your-turn-dsh
-dsh web
+pnpm dlx @deepseek-ai/dsh plugin --profile web add github:caracacara22/your-turn-dsh
+pnpm dlx @deepseek-ai/dsh web
 ```
+
+第二条命令会启动 DSH Web。请打开终端输出的完整地址；如果浏览器提示需要认证，请重新打开该地址。
 
 卸载：
 
 ```bash
-dsh plugin --profile web remove your-turn-dsh
+pnpm dlx @deepseek-ai/dsh plugin --profile web remove your-turn-dsh
 ```
+
+如果已经全局安装 DSH，也可以将 `pnpm dlx @deepseek-ai/dsh` 简写为 `dsh`。
 
 ## 本地开发
 
