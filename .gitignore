@@ -1,0 +1,7 @@
+node_modules/
+.pnpm-store/
+.DS_Store
+*.tgz
+coverage/
+playwright-report/
+test-results/

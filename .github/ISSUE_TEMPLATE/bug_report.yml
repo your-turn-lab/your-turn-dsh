@@ -1,0 +1,24 @@
+name: Bug report
+description: 报告可复现的问题
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: textarea
+    attributes:
+      label: 发生了什么
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: 复现步骤
+    validations:
+      required: true
+  - type: input
+    attributes:
+      label: DSH 与插件版本
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: 补充信息
+      description: 请先移除密钥、私人路径和敏感数据。

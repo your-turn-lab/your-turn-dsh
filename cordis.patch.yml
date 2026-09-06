@@ -1,0 +1,4 @@
+# DSH bundle patch: insert Your Turn into the active profile.
+- insert:
+    - id: your-turn
+      name: 'your-turn-dsh'

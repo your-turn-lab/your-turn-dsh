@@ -1,0 +1,107 @@
+# Your Turn for DSH
+
+> 把值得做的决策还给你。
+
+Your Turn 是一个 DeepSeek Harness Web 插件。它把 Agent 明确发布的任务计划与真实进度整理成可交互路径，让用户既能主动进入任意节点修改执行方式，也能在高影响或具有成长价值的判断处被 Agent 召回。
+
+## 核心能力
+
+- **实时路径**：显示主步骤、子步骤、当前状态与简要结果。
+- **My Turn**：打开任意未完成节点，修改协作方式、整体要求或具体子步骤。
+- **Your Turn**：Agent 在重要方向选择或值得用户练习的判断处暂停。
+- **两类召回**：成长型召回让用户先判断、Agent 反馈、用户确认；结果型召回提供 2–3 个具体方向。
+- **决策影响**：记录人的决定以及受影响的后续节点。
+- **会话恢复**：根据 DSH 标准工具事件重建任务路径。
+
+## 工作原理
+
+插件向当前 DSH Agent 注册五个结构化工具：
+
+- `publish_task_plan`
+- `update_task_node`
+- `update_task_substep`
+- `suggest_human_involvement`
+- `request_human_decision`
+
+Agent 根据实际任务生成路径并上报进度。插件将状态按 Session 隔离，通过 DSH Connection RPC 同步到 `shell.overlay` 侧边栏。`request_human_decision` 使用 DSH 原生问题卡暂停当前工具调用，回答后在同一个 Agent turn 内继续。
+
+插件不会展示或推断模型的隐藏思维过程，只呈现显式计划、动作、证据、产物和用户决策。
+
+## 环境要求
+
+- Node.js 20 或更新版本
+- pnpm 9 或更新版本
+- DeepSeek Harness `0.1.2-rc.1`
+- DSH Web 中可正常使用的模型 Provider
+
+## 从 GitHub 安装
+
+```bash
+dsh plugin --profile web add github:caracacara22/your-turn-dsh
+dsh web
+```
+
+卸载：
+
+```bash
+dsh plugin --profile web remove your-turn-dsh
+```
+
+## 本地开发
+
+```bash
+git clone https://github.com/caracacara22/your-turn-dsh.git
+cd your-turn-dsh
+pnpm install
+pnpm run build:client
+pnpm run dev:link
+dsh web --port 3081
+```
+
+修改前端后重新执行 `pnpm run build:client` 并刷新 DSH Web。
+
+## 如何触发
+
+对普通、简单任务，Agent 可以跳过路径工具。对长任务，插件注入的规则会要求 Agent：
+
+1. 在实质执行前发布用户可理解的任务路径。
+2. 在工作真实发生后更新主步骤和子步骤。
+3. 默认自动完成搜索、整理、格式化和可逆执行。
+4. 仅在成长价值高或显著影响结果且依赖用户取舍时召回。
+
+召回位置由当前模型结合任务、用户角色、已有证据和后续影响动态判断，不保证所有场景都能准确识别。
+
+## 模型配置
+
+Your Turn 不保存 API Key，也不直接发起独立模型请求。它使用当前 DSH Session 已选择的 Provider 和模型。只要普通 DSH 会话能够正常回复，插件即可使用同一 Agent 循环。推荐在 DSH Web 的 **Settings → Models** 中配置 Provider。
+
+## 隐私与安全
+
+- 不包含遥测、分析 SDK 或独立网络请求。
+- 不读取、记录或上传 Provider API Key。
+- 路径状态来自当前 DSH Session 的显式工具事件。
+- 主动修改使用 `agent.steer()`，只会在可用的执行边界生效。
+- 已经发生的文件修改或外部副作用不会被自动回滚。
+
+## 当前限制
+
+- 路径和召回质量依赖模型遵守工具协议及其上下文理解。
+- 陌生、目标模糊或证据不足的任务可能出现漏召回、误召回或路径抽象不准确。
+- 侧边栏中的主动编辑记录目前不会在插件进程重启后完整恢复。
+- 当前没有浏览器端自动化测试。
+- 当前仅验证 DSH `0.1.2-rc.1`，其他版本尚未承诺兼容。
+
+## 验证
+
+```bash
+pnpm run verify
+pnpm pack --dry-run
+```
+
+## 参与贡献
+
+欢迎提交 Issue 和 Pull Request。较大改动前，请先通过 Issue 描述问题、预期行为和验证方式。详见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+
+## License
+
+[MIT](LICENSE)

@@ -1,0 +1,54 @@
+{
+  "name": "your-turn-dsh",
+  "version": "0.1.0",
+  "description": "A human decision and attention layer for DeepSeek Harness agents",
+  "type": "module",
+  "main": "src/plugin.js",
+  "exports": {
+    ".": "./src/plugin.js",
+    "./client": "./lib/client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": ["lib", "src", "cordis.patch.yml", "README.md", "LICENSE"],
+  "dsh": {
+    "bundle": { "patch": "./cordis.patch.yml" },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-api-session-controller",
+        "@deepseek-ai/dsh-client-connection",
+        "@deepseek-ai/dsh-client-ui-layout",
+        "@deepseek-ai/dsh-client-ui-renderer"
+      ]
+    }
+  },
+  "scripts": {
+    "build": "pnpm run build:client",
+    "build:client": "node scripts/build-client.mjs",
+    "dev:link": "pnpm exec dsh plugin --profile web link .",
+    "dev": "pnpm run build:client && pnpm exec dsh --profile web --port 3081",
+    "test": "node --test test/*.test.js",
+    "check": "node --check src/plugin.js && node --check src/agent-tools.js && node --check src/session-runtime.js && node --check src/domain.js && node --check lib/client.js",
+    "verify": "pnpm run build:client && pnpm test && pnpm run check",
+    "prepack": "pnpm run verify"
+  },
+  "keywords": ["deepseek", "harness", "dsh", "dsh-plugin", "human-in-the-loop", "ai-agent"],
+  "author": "caracacara22",
+  "license": "MIT",
+  "repository": { "type": "git", "url": "git+https://github.com/caracacara22/your-turn-dsh.git" },
+  "homepage": "https://github.com/caracacara22/your-turn-dsh#readme",
+  "bugs": { "url": "https://github.com/caracacara22/your-turn-dsh/issues" },
+  "engines": { "node": ">=20", "dsh": "0.1.2-rc.1" },
+  "packageManager": "pnpm@11.25.0",
+  "peerDependencies": {
+    "@deepseek-ai/dsh-llm": "0.1.2-rc.1",
+    "@deepseek-ai/dsh-tools": "0.1.2-rc.1"
+  },
+  "devDependencies": {
+    "@deepseek-ai/dsh": "0.1.2-rc.1",
+    "@deepseek-ai/dsh-llm": "0.1.2-rc.1",
+    "@deepseek-ai/dsh-tools": "0.1.2-rc.1",
+    "esbuild": "0.25.10"
+  }
+}
