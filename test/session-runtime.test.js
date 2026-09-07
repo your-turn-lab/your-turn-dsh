@@ -42,3 +42,61 @@ test('recreated agents do not inherit stale memory', () => {
   store.attach(first); store.update('same', (state) => publishTaskPlan(state, plan)); store.detach(first); store.attach(agent('same'));
   assert.equal(store.state('same').nodes.length, 0);
 });
+
+test('replay restores path revisions, finish, and turn-end sync state', () => {
+  const calls = [
+    ['plan', 'publish_task_plan', plan, 'Published.'],
+    ['revise', 'revise_task_node', { node_id: 'decide', reason: '用户改变交付方式', title: '对话交付' }, 'Revised.'],
+    ['finish', 'finish_task_run', { summary: '完成', node_results: [
+      { node_id: 'prepare', status: 'completed', result: '准备完成' },
+      { node_id: 'decide', status: 'completed', result: '对话交付完成' },
+    ] }, 'Finished.'],
+  ];
+  const events = calls.flatMap(([callId, name, args, text]) => [
+    { type: 'tool/call', data: { callId, name, arguments: JSON.stringify(args), turn: 1, step: 1 } },
+    { type: 'tool/result', data: { message: { source: { kind: 'tool', callId }, content: [{ type: 'tool-result', content: [{ type: 'text', text }] }] } } },
+  ]);
+  events.push({ type: 'turn/end', data: { turn: 1, reason: { kind: 'completed' } } });
+  const store = new SessionRuntimeStore(); store.attach(agent('replayed-finish', events));
+  assert.equal(store.state('replayed-finish').nodes[1].title, '对话交付');
+  assert.equal(store.state('replayed-finish').runCompletion.summary, '完成');
+  assert.equal(store.state('replayed-finish').pathSync, null);
+});
+
+test('replay identifies a completed user turn that never published a path', () => {
+  const events = [
+    { type: 'turn/start', data: { turn: 1 } },
+    { type: 'user/message', data: { source: { kind: 'user' }, content: [{ type: 'text', text: '完成一个简单任务' }] } },
+    { type: 'assistant/message', data: { turn: 1, step: 1, message: { content: [{ type: 'text', text: '结果' }] } } },
+    { type: 'turn/end', data: { turn: 1, reason: { kind: 'completed' } } },
+  ];
+  const store = new SessionRuntimeStore(); store.attach(agent('missing-path-history', events));
+  assert.equal(store.state('missing-path-history').pathSync.status, 'needs_plan');
+  assert.equal(store.state('missing-path-history').nodes.length, 0);
+});
+
+test('replay preserves a pending native question and clears it after the answer', () => {
+  const planCall = { type: 'tool/call', data: { callId: 'plan', name: 'publish_task_plan', arguments: JSON.stringify(plan), turn: 1, step: 1 } };
+  const planResult = { type: 'tool/result', data: { message: { source: { kind: 'tool', callId: 'plan' }, content: [{ type: 'tool-result', content: [{ type: 'text', text: 'Published.' }] }] } } };
+  const askCall = { type: 'tool/call', data: { callId: 'ask', name: 'ask_user_question', arguments: JSON.stringify({ questions: [] }), turn: 1, step: 2 } };
+  let store = new SessionRuntimeStore(); store.attach(agent('pending-native', [planCall, planResult, askCall]));
+  assert.equal(store.state('pending-native').nodes[0].status, 'waiting_for_user');
+  assert.equal(store.state('pending-native').pendingDecision, null);
+  const askResult = { type: 'tool/result', data: { message: { source: { kind: 'tool', callId: 'ask' }, content: [{ type: 'tool-result', content: [{ type: 'text', text: '{\"answers\":[]}' }] }] } } };
+  store = new SessionRuntimeStore(); store.attach(agent('answered-native', [planCall, planResult, askCall, askResult]));
+  assert.equal(store.state('answered-native').nodes[0].status, 'in_progress');
+  assert.equal(store.state('answered-native').externalQuestion, null);
+});
+
+test('replay restores a task-shaping native choice into decision effects', () => {
+  const planCall = { type: 'tool/call', data: { callId: 'plan', name: 'publish_task_plan', arguments: JSON.stringify(plan), turn: 1, step: 1 } };
+  const planResult = { type: 'tool/result', data: { message: { source: { kind: 'tool', callId: 'plan' }, content: [{ type: 'tool-result', content: [{ type: 'text', text: 'Published.' }] }] } } };
+  const askCall = { type: 'tool/call', data: { callId: 'scope', name: 'ask_user_question', arguments: JSON.stringify({ questions: [{ id: 'scope', header: '交付形式', question: '使用哪种交付形式？', options: [{ label: '对话交付' }, { label: 'Markdown' }] }] }), turn: 1, step: 2 } };
+  const askResult = { type: 'tool/result', data: { message: { source: { kind: 'tool', callId: 'scope' }, content: [{ type: 'tool-result', content: [{ type: 'text', text: JSON.stringify({ answers: [{ id: 'scope', selected: ['对话交付'] }] }) }] }] } } };
+  const store = new SessionRuntimeStore();
+  store.attach(agent('native-decision-history', [planCall, planResult, askCall, askResult]));
+  const state = store.state('native-decision-history');
+  assert.equal(state.interventions.at(-1).kind, 'native_task_decision');
+  assert.match(state.interventions.at(-1).after, /对话交付/);
+  assert.ok(state.impacts.length >= 1);
+});

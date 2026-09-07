@@ -1,6 +1,6 @@
-import { MODES, addSystemSuggestion, applyTelemetry, createSessionState, publishTaskPlan, requestHumanDecision, resolveHumanDecision, updateTaskNode, updateTaskSubstep } from './domain.js';
+import { MODES, addSystemSuggestion, applyTelemetry, applyTurnEnd, beginNativeQuestion, createSessionState, endNativeQuestion, finishTaskRun, publishTaskPlan, requestHumanDecision, resolveHumanDecision, reviseTaskNode, updateTaskNode, updateTaskSubstep } from './domain.js';
 
-const OWN_TOOLS = new Set(['publish_task_plan', 'update_task_node', 'update_task_substep', 'suggest_human_involvement', 'request_human_decision']);
+const OWN_TOOLS = new Set(['publish_task_plan', 'update_task_node', 'update_task_substep', 'revise_task_node', 'finish_task_run', 'suggest_human_involvement', 'request_human_decision']);
 
 function argsOf(raw) { try { return JSON.parse(raw); } catch { return null; } }
 function contentText(event) {
@@ -20,6 +20,8 @@ function replayOwnTool(state, name, args, text) {
   if (name === 'publish_task_plan') state = publishTaskPlan(state, args);
   if (name === 'update_task_node') state = updateTaskNode(state, { nodeId: args.node_id, status: args.status, activity: args.activity, evidence: args.evidence ?? [] });
   if (name === 'update_task_substep') state = updateTaskSubstep(state, { nodeId: args.node_id, substepId: args.substep_id, status: args.status, result: args.result ?? '' });
+  if (name === 'revise_task_node') state = reviseTaskNode(state, { nodeId: args.node_id, reason: args.reason, title: args.title, objective: args.objective, instruction: args.instruction, rationale: args.rationale, substeps: args.substeps });
+  if (name === 'finish_task_run') state = finishTaskRun(state, { summary: args.summary, nodeResults: (args.node_results ?? []).map((item) => ({ nodeId: item.node_id, status: item.status, result: item.result })) });
   if (name === 'suggest_human_involvement') state = addSystemSuggestion(state, { nodeId: args.node_id, recommendedMode: args.recommended_mode, recallKind: args.decision_kind, reasons: args.reasons });
   if (name === 'request_human_decision') {
     state = requestHumanDecision(state, { nodeId: args.node_id, question: args.question, recommendedMode: args.recommended_mode, decisionKind: args.decision_kind, materials: args.materials, reasons: args.reasons });
@@ -33,9 +35,20 @@ export function replaySessionState(session) {
   let state = createSessionState(String(session.id));
   const calls = new Map();
   for (const event of session.snapshotEvents()) {
-    if (event.type === 'tool/call') calls.set(String(event.data.callId), { name: event.data.name, args: argsOf(event.data.arguments) });
+    if (event.type === 'user/message' && event.data?.source?.kind === 'user') {
+      state = applyTelemetry(state, { pathRequiredTurn: state.telemetry.turn });
+    }
+    if (event.type === 'tool/call') {
+      calls.set(String(event.data.callId), { name: event.data.name, args: argsOf(event.data.arguments) });
+      if (event.data.name === 'ask_user_question') state = beginNativeQuestion(state, { callId: event.data.callId, questions: argsOf(event.data.arguments)?.questions });
+    }
     if (event.type === 'tool/result') {
       const call = calls.get(String(event.data.message?.source?.callId));
+      if (call?.name === 'ask_user_question') {
+        let answer;
+        try { answer = JSON.parse(contentText(event)); } catch { answer = undefined; }
+        state = endNativeQuestion(state, { callId: event.data.message?.source?.callId, answer, isError: Boolean(event.data.error) });
+      }
       if (!call?.args || event.data.error || /Error:/i.test(contentText(event)) || !OWN_TOOLS.has(call.name)) continue;
       try { state = replayOwnTool(state, call.name, call.args, contentText(event)); } catch { /* Ignore incomplete historical calls. */ }
     }
@@ -44,6 +57,7 @@ export function replaySessionState(session) {
     }
     if (event.type === 'turn/start') state = applyTelemetry(state, { turn: event.data.turn, lastEvent: event.type });
     if (event.type === 'step/start') state = applyTelemetry(state, { turn: event.data.turn, step: event.data.step, lastEvent: event.type });
+    if (event.type === 'turn/end') state = applyTurnEnd(state, event.data.turn, event.data.reason);
   }
   return state;
 }

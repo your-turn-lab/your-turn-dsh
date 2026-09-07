@@ -1,6 +1,6 @@
 import { createUserMessage } from '@deepseek-ai/dsh-llm';
 import { defineTool } from '@deepseek-ai/dsh-tools';
-import { MODES, STATUS, addSystemSuggestion, publishTaskPlan, requestHumanDecision, resolveHumanDecision, updateTaskNode, updateTaskSubstep } from './domain.js';
+import { MODES, STATUS, addSystemSuggestion, finishTaskRun, publishTaskPlan, requestHumanDecision, resolveHumanDecision, reviseTaskNode, updateTaskNode, updateTaskSubstep } from './domain.js';
 
 const textOutput = {
   schema: { type: 'object', additionalProperties: false, properties: { ok: { type: 'boolean', required: true }, message: { type: 'string', required: true } } },
@@ -145,14 +145,19 @@ function resolveDecisionAnswer(answer, recommendedMode, reviewRound, decisionKin
 export function registerAgentTools(ctx, sessions) {
   ctx.tools.register(defineTool({
     name: 'publish_task_plan',
-    description: 'Publish the explicit task path before doing substantial work. Use 3–10 user-understandable outcome steps, not hidden reasoning or low-level command logs. Call this once at the start of any non-trivial task.',
+    description: 'Publish the explicit task path as the first action for every user task. Use 1–10 user-understandable outcome steps, including one node for a simple task. Never expose hidden reasoning or low-level command logs.',
     parameters: { title: { type: 'string', required: true }, goal: { type: 'string', required: true }, nodes: { type: 'array', required: true, items: { type: 'object', additionalProperties: false, properties: { id: { type: 'string', required: true }, title: { type: 'string', required: true }, objective: { type: 'string', required: true }, instruction: { type: 'string', required: true }, rationale: { type: 'string', required: true }, mode: { type: 'string', enum: Object.values(MODES), required: true }, substeps: { type: 'array', items: { type: 'object', additionalProperties: false, properties: { id: { type: 'string', required: true }, title: { type: 'string', required: true }, instruction: { type: 'string', required: true } } } } } } } },
     output: textOutput,
     async execute(args, exec) {
       const id = sessionId(exec);
       sessions.attach(exec.agent);
       const before = sessions.state(id);
-      sessions.replace(id, publishTaskPlan(before, args));
+      const next = publishTaskPlan(before, args);
+      next.telemetry = {
+        ...next.telemetry,
+        pathPublishedTurn: next.telemetry.pathRequiredTurn ?? next.telemetry.turn,
+      };
+      sessions.replace(id, next);
       return { ok: true, message: `Published a ${args.nodes.length}-node task path. Keep it updated as work progresses.` };
     },
   }));
@@ -177,6 +182,76 @@ export function registerAgentTools(ctx, sessions) {
     async execute(args, exec) {
       const id = sessionId(exec); sessions.update(id, (state) => updateTaskNode(state, { nodeId: args.node_id, status: args.status, activity: args.activity, evidence: args.evidence ?? [] }));
       return { ok: true, message: `Updated task node ${args.node_id} to ${args.status}.` };
+    },
+  }));
+
+  ctx.tools.register(defineTool({
+    name: 'revise_task_node',
+    description: 'Revise an unfinished visible path node when new user input, an answer from any DSH question card, or new evidence changes the scope, deliverable, method, or acceptance criteria. Keep the same node id whenever it is still the same stage.',
+    parameters: {
+      node_id: { type: 'string', required: true },
+      reason: { type: 'string', required: true, description: 'Concise explanation of what new information requires this path change.' },
+      title: { type: 'string' },
+      objective: { type: 'string' },
+      instruction: { type: 'string' },
+      rationale: { type: 'string' },
+      substeps: {
+        type: 'array',
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            id: { type: 'string', required: true },
+            title: { type: 'string', required: true },
+            instruction: { type: 'string', required: true },
+          },
+        },
+      },
+    },
+    output: textOutput,
+    async execute(args, exec) {
+      const id = sessionId(exec);
+      sessions.update(id, (state) => reviseTaskNode(state, {
+        nodeId: args.node_id,
+        reason: args.reason,
+        title: args.title,
+        objective: args.objective,
+        instruction: args.instruction,
+        rationale: args.rationale,
+        substeps: args.substeps,
+      }));
+      return { ok: true, message: `Revised task node ${args.node_id} to reflect the latest user decision.` };
+    },
+  }));
+
+  ctx.tools.register(defineTool({
+    name: 'finish_task_run',
+    description: 'Reconcile the visible path immediately before the final user-facing answer. Resolve every unfinished node as completed or skipped, and explain skipped nodes only when user input or changed scope made them obsolete. This tool refuses to finish while any path node remains unresolved.',
+    parameters: {
+      summary: { type: 'string', required: true, description: 'One concise sentence describing the completed task result.' },
+      node_results: {
+        type: 'array',
+        required: true,
+        description: 'Final resolutions for every node that is not already completed or skipped.',
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            node_id: { type: 'string', required: true },
+            status: { type: 'string', required: true, enum: [STATUS.completed, STATUS.skipped] },
+            result: { type: 'string', required: true },
+          },
+        },
+      },
+    },
+    output: textOutput,
+    async execute(args, exec) {
+      const id = sessionId(exec);
+      sessions.update(id, (state) => finishTaskRun(state, {
+        summary: args.summary,
+        nodeResults: args.node_results.map((item) => ({ nodeId: item.node_id, status: item.status, result: item.result })),
+      }));
+      return { ok: true, message: 'Task path reconciled and finished. Return the final answer now.' };
     },
   }));
 
@@ -223,7 +298,7 @@ export function registerAgentTools(ctx, sessions) {
   ctx.systemPrompt.section({
     name: 'tool:human-decision-loop',
     order: 4950,
-    text: 'For every non-trivial user task, call publish_task_plan before substantial work. Create 3–10 user-understandable outcome steps from the actual task; do not expose hidden reasoning or raw command logs. Update observable substeps only after the work happens, using one concise sentence with the action and key result. Recall the user only for either (1) a core professional judgment the user benefits from practicing, or (2) a high-impact direction choice that genuinely depends on user preference or context. Routine search, formatting, checking, and reversible execution should continue autonomously. If the user is an intern, student, junior, or explicitly wants to learn, consider one growth judgment before the final conclusion, but do not interrupt merely to ask for approval. Ask one direct question and provide at most three decision-essential materials. Direction recalls require 2–3 concrete task options; growth recalls omit options so the user answers independently. The same tool call waits for the answer. For a growth recall, review the answer against evidence, then call request_human_decision again for revision or confirmation. When a [Human path intervention] arrives, revise the named step and affected downstream work, acknowledge it through the progress tools, then continue. Simple tasks may skip these tools.',
+    text: 'For every user task, call publish_task_plan as the first tool action before research, execution, or the final answer. This applies even to simple tasks: use one concise node when one node is enough, and use up to ten user-understandable outcome steps for larger work. Whether a path is shown is independent of user identity. Identity such as intern, student, junior, or an explicit desire to learn affects only whether a growth recall is useful. Do not expose hidden reasoning or raw command logs. Update observable substeps only after the work happens, using one concise sentence with the action and key result. Treat answers returned by any DSH question tool as authoritative task input: if an answer changes the scope, deliverable, method, or acceptance criteria, call revise_task_node on the affected unfinished path node before continuing. Do not leave an obsolete deliverable in the visible path. Recall the user only for either (1) a core professional judgment the user benefits from practicing, or (2) a high-impact direction choice that genuinely depends on user preference or context. Routine search, formatting, checking, and reversible execution should continue autonomously. Consider a growth judgment for an intern, student, junior, or user who explicitly wants to learn, but do not interrupt merely to ask for approval. Ask one direct question and provide at most three decision-essential materials. Direction recalls require 2–3 concrete task options; growth recalls omit options so the user answers independently. The same tool call waits for the answer. For a growth recall, review the answer against evidence, then call request_human_decision again for revision or confirmation. When a [Human path intervention] arrives, revise the named step and affected downstream work, acknowledge it through the progress tools, then continue. Before emitting the final user-facing answer, always call finish_task_run; explicitly mark work removed by a user decision as skipped, never silently leave nodes in progress. If finish_task_run rejects, reconcile the listed nodes and call it again.',
   });
 }
 

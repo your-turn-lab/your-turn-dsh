@@ -1,6 +1,6 @@
 {
   "name": "your-turn-dsh",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A human decision and attention layer for DeepSeek Harness agents",
   "type": "module",
   "main": "src/plugin.js",

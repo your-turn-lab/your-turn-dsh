@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { MODES, STATUS, buildOutcomeSummary, createSessionState, publishTaskPlan, reduceTask, requestHumanDecision, resolveHumanDecision, updateTaskNode, updateTaskSubstep } from '../src/domain.js';
+import { MODES, STATUS, applyTurnEnd, beginNativeQuestion, buildOutcomeSummary, createSessionState, endNativeQuestion, finishTaskRun, publishTaskPlan, reduceTask, requestHumanDecision, resolveHumanDecision, reviseTaskNode, updateTaskNode, updateTaskSubstep } from '../src/domain.js';
 
 const plan = { title: '发布新功能', goal: '从信息到交付', nodes: [
   { id: 'research', title: '整理信息', objective: '形成事实基础', instruction: '整理已有材料', rationale: '适合自动执行', mode: MODES.agent, substeps: [{ id: 'collect', title: '收集材料', instruction: '读取输入' }, { id: 'organize', title: '整理证据', instruction: '保留来源' }] },
@@ -22,6 +22,29 @@ test('substeps and nodes advance from progress updates', () => {
   assert.equal(state.nodes[0].substeps[1].status, STATUS.inProgress);
   state = updateTaskNode(state, { nodeId: 'research', status: STATUS.completed, activity: '证据整理完成' });
   assert.equal(state.nodes[1].status, STATUS.inProgress);
+});
+
+test('completing every substep automatically completes its parent node', () => {
+  let state = publishTaskPlan(createSessionState('substep-rollup'), plan);
+  state = updateTaskSubstep(state, { nodeId: 'research', substepId: 'collect', status: STATUS.completed, result: '材料读取完成' });
+  state = updateTaskSubstep(state, { nodeId: 'research', substepId: 'organize', status: STATUS.completed, result: '证据整理完成' });
+  assert.equal(state.nodes[0].status, STATUS.completed);
+  assert.equal(state.nodes[1].status, STATUS.inProgress);
+});
+
+test('a changed delivery choice revises the visible path without replacing it', () => {
+  let state = publishTaskPlan(createSessionState('revision-from-question'), plan);
+  state = reviseTaskNode(state, {
+    nodeId: 'deliver',
+    reason: '用户在 DSH 问题卡中选择直接在对话交付',
+    title: '在对话中交付',
+    objective: '直接输出可用结论',
+    instruction: '在最终回复中给出结构化内容，不创建 Markdown 文件',
+  });
+  const node = state.nodes.find((item) => item.id === 'deliver');
+  assert.equal(node.title, '在对话中交付');
+  assert.match(node.instruction, /不创建 Markdown/);
+  assert.equal(state.planRevisions.length, 1);
 });
 
 test('growth recall requires feedback and confirmation', () => {
@@ -57,4 +80,86 @@ test('final acceptance requires all nodes to complete', () => {
   state.nodes.forEach((node) => { node.status = STATUS.completed; });
   state = reduceTask(state, { type: 'ACCEPT_FINAL_RESULT' });
   assert.ok(state.finalAcceptedAt);
+});
+
+test('finish refuses unresolved nodes and closes explicitly reconciled work', () => {
+  let state = publishTaskPlan(createSessionState('finish'), plan);
+  assert.throws(() => finishTaskRun(state, { summary: '交付完成', nodeResults: [] }), /research, judge, deliver/);
+  state = finishTaskRun(state, {
+    summary: '已直接在对话中完成交付',
+    nodeResults: [
+      { nodeId: 'research', status: STATUS.completed, result: '信息整理完成' },
+      { nodeId: 'judge', status: STATUS.completed, result: '重点判断完成' },
+      { nodeId: 'deliver', status: STATUS.completed, result: '已在对话中交付' },
+    ],
+  });
+  assert.equal(state.nodes.every((node) => node.status === STATUS.completed), true);
+  assert.equal(state.runCompletion.summary, '已直接在对话中完成交付');
+});
+
+test('finish cannot bypass an unconfirmed growth recall', () => {
+  let state = publishTaskPlan(createSessionState('finish-growth'), plan);
+  state = requestHumanDecision(state, { nodeId: 'judge', question: '你的判断？', decisionKind: 'growth', materials: ['证据'], reasons: ['值得练习'] });
+  state = resolveHumanDecision(state, { nodeId: 'judge', mode: MODES.agentCoaches, response: '初步判断' });
+  assert.throws(() => finishTaskRun(state, {
+    summary: '完成',
+    nodeResults: [
+      { nodeId: 'research', status: STATUS.completed, result: '完成' },
+      { nodeId: 'judge', status: STATUS.completed, result: '完成' },
+      { nodeId: 'deliver', status: STATUS.completed, result: '完成' },
+    ],
+  }), /still requires AI feedback and human confirmation/);
+});
+
+test('substep rollup cannot bypass an unconfirmed growth recall', () => {
+  let state = publishTaskPlan(createSessionState('substep-growth'), plan);
+  state = requestHumanDecision(state, { nodeId: 'judge', question: '你的判断？', decisionKind: 'growth', materials: ['证据'], reasons: ['值得练习'] });
+  state = resolveHumanDecision(state, { nodeId: 'judge', mode: MODES.agentCoaches, response: '初步判断' });
+  state.nodes[1].substeps.slice(0, -1).forEach((item) => { item.status = STATUS.completed; item.result = '完成'; });
+  const last = state.nodes[1].substeps.at(-1);
+  assert.throws(() => updateTaskSubstep(state, { nodeId: 'judge', substepId: last.id, status: STATUS.completed, result: '完成' }), /feedback and human confirmation/);
+});
+
+test('completed turn with unresolved nodes reports path sync instead of fake completion', () => {
+  let state = publishTaskPlan(createSessionState('turn-end'), plan);
+  state = applyTurnEnd(state, 1, { kind: 'completed' });
+  assert.equal(state.pathSync.status, 'needs_sync');
+  assert.equal(state.nodes[0].status, STATUS.inProgress);
+  assert.equal(state.telemetry.lastTurnEndReason, 'completed');
+});
+
+test('native DSH questions pause the current node without becoming a recall decision', () => {
+  let state = publishTaskPlan(createSessionState('native-question'), plan);
+  state = beginNativeQuestion(state, { callId: 'ask-1' });
+  assert.equal(state.nodes[0].status, STATUS.waitingForUser);
+  assert.equal(state.externalQuestion.nodeId, 'research');
+  assert.equal(state.pendingDecision, null);
+  assert.equal(state.interventions.length, 0);
+  assert.equal(state.nodes[0].recallKind, undefined);
+  state = endNativeQuestion(state, { callId: 'ask-1' });
+  assert.equal(state.nodes[0].status, STATUS.inProgress);
+  assert.equal(state.externalQuestion, null);
+  assert.equal(state.interventions.length, 0);
+});
+
+test('task-shaping native choices are recorded while ordinary facts are not', () => {
+  let state = publishTaskPlan(createSessionState('native-task-choice'), plan);
+  state = beginNativeQuestion(state, {
+    callId: 'scope-choice',
+    questions: [{ id: 'scope', header: '调研范围', question: '这次调研覆盖哪些资料？', options: [{ label: '两块都做' }, { label: '只做 A' }] }],
+  });
+  state = endNativeQuestion(state, { callId: 'scope-choice', answer: { answers: [{ id: 'scope', selected: ['两块都做'] }] } });
+  let outcome = buildOutcomeSummary(state);
+  assert.equal(outcome.decisions.length, 1);
+  assert.equal(outcome.decisions[0].kind, 'native_task_decision');
+  assert.match(outcome.decisions[0].detail, /两块都做/);
+  assert.ok(outcome.effects.length >= 1);
+
+  state = beginNativeQuestion(state, {
+    callId: 'fact-input',
+    questions: [{ id: 'date', header: '补充信息', question: '报告日期是什么？' }],
+  });
+  state = endNativeQuestion(state, { callId: 'fact-input', answer: { answers: [{ id: 'date', selected: [], custom: '9 月 7 日' }] } });
+  outcome = buildOutcomeSummary(state);
+  assert.equal(outcome.decisions.length, 1);
 });

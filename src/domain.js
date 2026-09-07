@@ -1,5 +1,5 @@
 /** @typedef {'agent' | 'human_leads' | 'agent_coaches'} CollaborationMode */
-/** @typedef {'pending' | 'in_progress' | 'waiting_for_user' | 'awaiting_feedback' | 'feedback_ready' | 'completed'} NodeStatus */
+/** @typedef {'pending' | 'in_progress' | 'waiting_for_user' | 'awaiting_feedback' | 'feedback_ready' | 'completed' | 'skipped'} NodeStatus */
 
 export const MODES = Object.freeze({ agent: 'agent', humanLeads: 'human_leads', agentCoaches: 'agent_coaches' });
 export const STATUS = Object.freeze({
@@ -9,11 +9,15 @@ export const STATUS = Object.freeze({
   awaitingFeedback: 'awaiting_feedback',
   feedbackReady: 'feedback_ready',
   completed: 'completed',
+  skipped: 'skipped',
 });
 
 function clone(value) { return structuredClone(value); }
+function isTerminalStatus(status) { return status === STATUS.completed || status === STATUS.skipped; }
+function taskIsComplete(state) { return state.nodes.length > 0 && state.nodes.every((node) => isTerminalStatus(node.status)); }
+function markInSync(state) { state.pathSync = null; }
 function substepStatus(nodeStatus, index) {
-  if (nodeStatus === STATUS.completed) return STATUS.completed;
+  if (isTerminalStatus(nodeStatus)) return nodeStatus;
   if (nodeStatus === STATUS.inProgress && index === 0) return STATUS.inProgress;
   return STATUS.pending;
 }
@@ -33,7 +37,7 @@ function normalizeSubsteps(node) {
     seen.add(id);
     return {
       id, title: String(substep.title || `小步骤 ${index + 1}`).trim(),
-      status: [STATUS.pending, STATUS.inProgress, STATUS.completed].includes(substep.status) ? substep.status : substepStatus(node.status, index),
+      status: [STATUS.pending, STATUS.inProgress, STATUS.completed, STATUS.skipped].includes(substep.status) ? substep.status : substepStatus(node.status, index),
       instruction: String(substep.instruction || substep.title || '').trim(), result: String(substep.result || '').trim(),
     };
   });
@@ -42,7 +46,8 @@ function normalizeSubsteps(node) {
 export function createSessionState(sessionId, agentInfo = {}) {
   return {
     id: sessionId, title: '等待 Agent 发布任务路径', scenario: '当前 DSH 会话', runMode: 'agent', revision: 1,
-    selectedNodeId: null, nodes: [], suggestions: [], interventions: [], impacts: [], outcome: null, finalAcceptedAt: null, pendingDecision: null,
+    selectedNodeId: null, nodes: [], suggestions: [], interventions: [], impacts: [], planRevisions: [], outcome: null, finalAcceptedAt: null, pendingDecision: null,
+    pathSync: null, runCompletion: null,
     telemetry: { agentStatus: 'idle', turn: 0, step: 0, currentTool: null, lastEvent: 'session-attached' },
     agent: { provider: agentInfo.provider, model: agentInfo.model },
   };
@@ -72,7 +77,8 @@ export function publishTaskPlan(previous, plan) {
     return value;
   });
   state.selectedNodeId = state.nodes[0].id;
-  state.suggestions = []; state.interventions = []; state.impacts = []; state.pendingDecision = null; state.outcome = null; state.finalAcceptedAt = null;
+  state.suggestions = []; state.interventions = []; state.impacts = []; state.planRevisions = []; state.pendingDecision = null; state.outcome = null; state.finalAcceptedAt = null; state.runCompletion = null;
+  markInSync(state);
   state.revision += 1;
   return state;
 }
@@ -94,6 +100,8 @@ function startNextNode(state, node) {
 export function updateTaskNode(previous, update) {
   const state = clone(previous);
   state.finalAcceptedAt = null;
+  state.runCompletion = null;
+  markInSync(state);
   const node = findNode(state, update.nodeId);
   if (update.status === STATUS.completed && node.recallKind === 'growth' && node.coach && node.coach.phase !== 'confirmed') {
     throw new Error('Growth recall requires AI feedback and human confirmation before this node can complete.');
@@ -109,7 +117,7 @@ export function updateTaskNode(previous, update) {
   if (update.status === STATUS.completed) {
     node.substeps = node.substeps.map((item, index) => ({ ...item, status: STATUS.completed, result: item.result || (index === node.substeps.length - 1 ? String(update.activity || node.activity) : '已完成') }));
     startNextNode(state, node);
-    if (state.nodes.every((item) => item.status === STATUS.completed)) state.outcome = buildOutcomeSummary(state);
+    if (taskIsComplete(state)) state.outcome = buildOutcomeSummary(state);
   }
   state.revision += 1;
   return state;
@@ -118,6 +126,8 @@ export function updateTaskNode(previous, update) {
 export function updateTaskSubstep(previous, update) {
   const state = clone(previous);
   state.finalAcceptedAt = null;
+  state.runCompletion = null;
+  markInSync(state);
   const node = findNode(state, update.nodeId);
   const index = node.substeps.findIndex((item) => item.id === update.substepId);
   const substep = node.substeps[index];
@@ -129,6 +139,15 @@ export function updateTaskSubstep(previous, update) {
   if (update.status === STATUS.completed) {
     const next = node.substeps[index + 1];
     if (next?.status === STATUS.pending) next.status = STATUS.inProgress;
+    if (node.substeps.every((item) => isTerminalStatus(item.status))) {
+      if (node.recallKind === 'growth' && node.coach && node.coach.phase !== 'confirmed') {
+        throw new Error('Growth recall requires AI feedback and human confirmation before this node can complete.');
+      }
+      node.status = STATUS.completed;
+      node.activity = substep.result || `已完成“${node.title}”。`;
+      startNextNode(state, node);
+      if (taskIsComplete(state)) state.outcome = buildOutcomeSummary(state);
+    }
   }
   state.revision += 1;
   return state;
@@ -136,6 +155,7 @@ export function updateTaskSubstep(previous, update) {
 
 export function addSystemSuggestion(previous, suggestion) {
   const state = clone(previous);
+  markInSync(state);
   const node = findNode(state, suggestion.nodeId);
   const recallKind = ['growth', 'direction'].includes(suggestion.recallKind) ? suggestion.recallKind : suggestion.recommendedMode === MODES.agentCoaches ? 'growth' : 'direction';
   node.recallKind = recallKind;
@@ -149,6 +169,7 @@ export function addSystemSuggestion(previous, suggestion) {
 export function requestHumanDecision(previous, request) {
   let state = clone(previous);
   state.finalAcceptedAt = null;
+  markInSync(state);
   if (state.pendingDecision) throw new Error('Resolve the current human decision before requesting another one.');
   const node = findNode(state, request.nodeId);
   const recallKind = ['growth', 'direction'].includes(request.decisionKind) ? request.decisionKind : request.recommendedMode === MODES.agentCoaches ? 'growth' : 'direction';
@@ -170,9 +191,24 @@ function appendIntervention(state, intervention) {
   return state.interventions.at(-1);
 }
 
+function isTaskShapingQuestion(questions = []) {
+  const text = questions.map((item) => `${item.header || ''} ${item.question || ''} ${(item.options || []).map((option) => option.label || '').join(' ')}`).join(' ');
+  return /范围|交付|形式|方向|优先|目标|受众|方法|方案|取舍|scope|deliver|format|direction|priority|audience|method|approach/iu.test(text);
+}
+
+function nativeAnswerText(answer) {
+  const answers = Array.isArray(answer?.answers) ? answer.answers : [];
+  return answers.map((item) => {
+    const custom = String(item.custom || '').trim();
+    const selected = Array.isArray(item.selected) ? item.selected.filter(Boolean).join('、') : '';
+    return custom || selected;
+  }).filter(Boolean).join('；');
+}
+
 export function resolveHumanDecision(previous, response) {
   const state = clone(previous);
   state.finalAcceptedAt = null;
+  markInSync(state);
   if (!state.pendingDecision || state.pendingDecision.nodeId !== response.nodeId) throw new Error('This session is not waiting for that decision.');
   const node = findNode(state, response.nodeId);
   const text = String(response.response ?? '').trim();
@@ -213,6 +249,153 @@ export function applyTelemetry(previous, patch) {
   return state;
 }
 
+export function beginNativeQuestion(previous, question) {
+  const state = clone(previous);
+  if (state.pendingDecision || state.externalQuestion || state.nodes.length === 0) return state;
+  const node = state.nodes.find((item) => [STATUS.inProgress, STATUS.awaitingFeedback].includes(item.status))
+    ?? state.nodes.find((item) => item.id === state.selectedNodeId);
+  if (!node || isTerminalStatus(node.status)) return state;
+  state.externalQuestion = {
+    callId: String(question.callId || ''),
+    nodeId: node.id,
+    previousStatus: node.status,
+    previousActivity: node.activity,
+    questions: clone(question.questions || []),
+    taskShaping: isTaskShapingQuestion(question.questions),
+    startedAt: new Date().toISOString(),
+  };
+  node.status = STATUS.waitingForUser;
+  node.activity = 'DSH 正在等待你的补充信息。';
+  state.selectedNodeId = node.id;
+  state.revision += 1;
+  return state;
+}
+
+export function endNativeQuestion(previous, question) {
+  const state = clone(previous);
+  const pending = state.externalQuestion;
+  if (!pending) return state;
+  const callId = String(question.callId || '');
+  if (pending.callId && callId && pending.callId !== callId) return state;
+  const node = state.nodes.find((item) => item.id === pending.nodeId);
+  if (node && node.status === STATUS.waitingForUser && !state.pendingDecision) {
+    node.status = [STATUS.inProgress, STATUS.awaitingFeedback].includes(pending.previousStatus)
+      ? pending.previousStatus
+      : STATUS.inProgress;
+    node.activity = pending.previousActivity || '已收到补充信息，Agent 继续执行。';
+  }
+  const answer = nativeAnswerText(question.answer);
+  if (!question.isError && pending.taskShaping && node && answer) {
+    const decision = appendIntervention(state, {
+      source: 'user',
+      kind: 'native_task_decision',
+      nodeId: node.id,
+      before: pending.questions.map((item) => item.question).filter(Boolean).join('；') || 'Agent 请求用户确定任务方式',
+      after: answer,
+    });
+    const targets = [node, ...downstreamNodes(state, node)];
+    for (const affected of targets) {
+      const beforeEffect = affected.activity;
+      const afterEffect = affected.id === node.id
+        ? `当前步骤采用用户选择：${answer}`
+        : `后续工作需遵循用户选择：${answer}`;
+      affected.impact = { kind: 'affected', causedBy: decision.id, reason: 'DSH 原生任务选择改变了执行约束', sequence: decision.sequence };
+      state.impacts.push({ id: `impact-${state.impacts.length + 1}`, decisionId: decision.id, affectedNodeId: affected.id, before: beforeEffect, after: afterEffect, reason: affected.impact.reason });
+    }
+  }
+  state.externalQuestion = null;
+  if (state.outcome) state.outcome = buildOutcomeSummary(state);
+  state.revision += 1;
+  return state;
+}
+
+export function reviseTaskNode(previous, revision) {
+  const state = clone(previous);
+  const node = findNode(state, revision.nodeId);
+  if (isTerminalStatus(node.status)) throw new Error('Completed or skipped nodes cannot be revised.');
+  const before = { title: node.title, objective: node.objective, instruction: node.instruction, rationale: node.rationale };
+  for (const field of ['title', 'objective', 'instruction', 'rationale']) {
+    if (revision[field] === undefined) continue;
+    const value = String(revision[field]).trim();
+    if (!value) throw new Error(`${field} cannot be empty.`);
+    node[field] = value;
+  }
+  if (Array.isArray(revision.substeps) && revision.substeps.length > 0) {
+    const current = new Map(node.substeps.map((item) => [item.id, item]));
+    node.substeps = normalizeSubsteps({
+      ...node,
+      substeps: revision.substeps.map((item) => {
+        const old = current.get(String(item.id));
+        return { ...item, status: old?.status ?? STATUS.pending, result: old?.result ?? '' };
+      }),
+    });
+  }
+  const changed = ['title', 'objective', 'instruction', 'rationale'].some((field) => before[field] !== node[field]) || Array.isArray(revision.substeps);
+  if (!changed) throw new Error('A path revision must change at least one field or provide substeps.');
+  state.planRevisions ??= [];
+  state.planRevisions.push({
+    id: `path-revision-${state.planRevisions.length + 1}`,
+    nodeId: node.id,
+    reason: String(revision.reason || '根据新上下文同步任务路径。').trim(),
+    before,
+    after: { title: node.title, objective: node.objective, instruction: node.instruction, rationale: node.rationale },
+    at: new Date().toISOString(),
+  });
+  state.finalAcceptedAt = null;
+  state.runCompletion = null;
+  markInSync(state);
+  state.revision += 1;
+  return state;
+}
+
+export function finishTaskRun(previous, completion) {
+  const state = clone(previous);
+  if (state.pendingDecision) throw new Error('Resolve the pending human decision before finishing the task run.');
+  if (state.nodes.length === 0) throw new Error('Publish a task plan before finishing the task run.');
+  const resolutions = Array.isArray(completion.nodeResults) ? completion.nodeResults : [];
+  const seen = new Set();
+  for (const resolution of resolutions) {
+    const node = findNode(state, resolution.nodeId);
+    if (seen.has(node.id)) throw new Error(`Duplicate final resolution for node: ${node.id}`);
+    seen.add(node.id);
+    const status = resolution.status === STATUS.skipped ? STATUS.skipped : STATUS.completed;
+    const result = String(resolution.result || '').trim();
+    if (!result) throw new Error(`Final resolution for “${node.title}” requires a result.`);
+    if (node.recallKind === 'growth' && node.coach && node.coach.phase !== 'confirmed') {
+      throw new Error(`Growth recall for “${node.title}” still requires AI feedback and human confirmation.`);
+    }
+    node.status = status;
+    node.activity = result;
+    node.substeps = node.substeps.map((item) => ({ ...item, status, result: item.result || result }));
+  }
+  const unfinished = state.nodes.filter((node) => !isTerminalStatus(node.status));
+  if (unfinished.length > 0) throw new Error(`Reconcile every unfinished path node before the final response: ${unfinished.map((node) => node.id).join(', ')}`);
+  const summary = String(completion.summary || '').trim();
+  if (!summary) throw new Error('finish_task_run requires a concise final summary.');
+  state.outcome = buildOutcomeSummary(state);
+  state.runCompletion = { summary, completedAt: new Date().toISOString() };
+  state.finalAcceptedAt = null;
+  markInSync(state);
+  state.revision += 1;
+  return state;
+}
+
+export function applyTurnEnd(previous, turn, reason) {
+  const state = clone(previous);
+  const reasonKind = typeof reason === 'string' ? reason : reason?.kind || 'unknown';
+  state.telemetry = { ...state.telemetry, turn: Number.isFinite(turn) ? turn : state.telemetry.turn, agentStatus: 'idle', currentTool: null, lastEvent: 'turn/end', lastTurnEndReason: reasonKind };
+  if (reasonKind === 'completed' && state.telemetry?.pathRequiredTurn === turn && state.telemetry?.pathPublishedTurn !== turn) {
+    state.pathSync = { status: 'needs_plan', turn: Number.isFinite(turn) ? turn : state.telemetry.turn, reason: 'Agent 本轮已结束，但没有发布任务路径。' };
+  } else if (reasonKind === 'completed' && state.nodes.length > 0 && !taskIsComplete(state) && !state.pendingDecision) {
+    state.pathSync = { status: 'needs_sync', turn: Number.isFinite(turn) ? turn : state.telemetry.turn, reason: 'Agent 本轮已结束，但仍有路径节点未确认完成。' };
+  } else if (taskIsComplete(state)) {
+    state.outcome ??= buildOutcomeSummary(state);
+    markInSync(state);
+  }
+  state.revision += 1;
+  return state;
+}
+
 function nodeLabel(state, nodeId) { return state.nodes.find((node) => node.id === nodeId)?.title ?? nodeId; }
 function modeLabel(mode) { return ({ agent: '“AI完成”', human_leads: '“主动介入”', agent_coaches: '“成长型召回”' })[mode] ?? mode; }
 function describeDecision(state, item) {
@@ -225,9 +408,10 @@ function describeDecision(state, item) {
   if (item.kind === 'coach_answer') return `提交初步判断：${item.after}`;
   if (item.kind === 'coach_revision') return `根据反馈完善判断：${item.after}`;
   if (item.kind === 'coach_confirm') return `确认用于后续工作的判断：${item.after}`;
+  if (item.kind === 'native_task_decision') return `通过任务选项确定“${label}”：${item.after}`;
   return String(item.after ?? item.kind);
 }
-function assertEditable(node) { if (node.status === STATUS.completed) throw new Error('Completed nodes cannot be edited.'); }
+function assertEditable(node) { if (isTerminalStatus(node.status)) throw new Error('Completed or skipped nodes cannot be edited.'); }
 
 export function reduceTask(previous, action) {
   const state = clone(previous);
@@ -296,7 +480,7 @@ export function reduceTask(previous, action) {
       state.outcome = null; return state;
     }
     case 'ACCEPT_FINAL_RESULT':
-      if (state.nodes.length === 0 || !state.nodes.every((node) => node.status === STATUS.completed)) throw new Error('Final result can only be accepted after every task node is complete.');
+      if (!taskIsComplete(state)) throw new Error('Final result can only be accepted after every task node is complete.');
       state.outcome ??= buildOutcomeSummary(state); state.finalAcceptedAt = new Date().toISOString(); return state;
     default: throw new Error(`Unknown action: ${action.type}`);
   }

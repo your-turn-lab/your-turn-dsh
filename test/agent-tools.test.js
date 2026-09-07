@@ -57,3 +57,22 @@ test('tools publish a model-generated path and pause for a decision', async () =
   assert.equal(sessions.state(liveAgent.id).interventions.at(-1).kind, 'direction_answer');
   assert.equal(sections.length, 1);
 });
+
+test('tools revise a changed deliverable and require explicit final reconciliation', async () => {
+  const { definitions, sessions } = setup();
+  const liveAgent = agent('reconcile'); sessions.attach(liveAgent);
+  await definitions.find((tool) => tool.name === 'publish_task_plan').execute({ title: '任务', goal: '完成交付', nodes: [
+    { id: 'work', title: '完成分析', objective: '得到结论', instruction: '分析材料', rationale: '核心工作', mode: 'agent' },
+    { id: 'deliver', title: '生成 Markdown', objective: '写入文件', instruction: '创建 Markdown', rationale: '默认交付方式', mode: 'agent' },
+  ] }, { agent: liveAgent, signal: new AbortController().signal });
+  await definitions.find((tool) => tool.name === 'revise_task_node').execute({
+    node_id: 'deliver', reason: '用户选择对话内交付', title: '在对话中交付', objective: '直接返回结果', instruction: '不创建文件，直接回答',
+  }, { agent: liveAgent, signal: new AbortController().signal });
+  const finish = definitions.find((tool) => tool.name === 'finish_task_run');
+  await assert.rejects(() => finish.execute({ summary: '已交付', node_results: [] }, { agent: liveAgent, signal: new AbortController().signal }), /Reconcile every unfinished/);
+  await finish.execute({ summary: '已在对话中交付', node_results: [
+    { node_id: 'work', status: 'completed', result: '分析完成' },
+    { node_id: 'deliver', status: 'completed', result: '对话交付完成' },
+  ] }, { agent: liveAgent, signal: new AbortController().signal });
+  assert.equal(sessions.state(liveAgent.id).nodes.every((node) => node.status === 'completed'), true);
+});
