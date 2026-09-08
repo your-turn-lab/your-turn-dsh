@@ -1,10 +1,18 @@
 # Your Turn for DSH
 
-> 把值得做的决策还给你。
+> Keep people where their judgment matters.
 
-Your Turn 是一个 DeepSeek Harness Web 插件。它把 Agent 明确发布的任务计划与真实进度整理成可交互路径，让用户既能主动进入任意节点修改执行方式，也能在高影响或具有成长价值的判断处被 Agent 召回。
+Your Turn 是一个 DeepSeek Harness Web 插件，起源于中国人民大学 Build with Care 黑客松，并获「最佳创意奖」。
 
-## 核心能力
+当前项目继续探索一个更具体的问题：当 Agent 可以长时间自主执行时，如何在有限的人类注意力下，把人的参与留给真正值得人判断的地方，同时让其余执行尽量自主完成。
+
+## 版本状态
+
+- `renmin-v1`：人大 Build with Care 获奖原型基线。
+- `zhongkesong-2026`：当前迭代分支，产品与工程方案正在继续收敛。
+- `main`：目前保留人大版本的稳定基线。
+
+## Renmin v1 已实现能力
 
 - **实时路径**：显示主步骤、子步骤、当前状态与简要结果。
 - **My Turn**：打开任意未完成节点，修改协作方式、整体要求或具体子步骤。
@@ -12,6 +20,8 @@ Your Turn 是一个 DeepSeek Harness Web 插件。它把 Agent 明确发布的�
 - **两类召回**：成长型召回让用户先判断、Agent 反馈、用户确认；结果型召回提供 2–3 个具体方向。
 - **决策影响**：记录人的决定以及受影响的后续节点。
 - **会话恢复**：根据 DSH 标准工具事件重建任务路径。
+
+> 上述能力描述对应 `renmin-v1` 获奖原型。当前 `zhongkesong-2026` 分支正在重新收敛产品重点，后续机制不以此处的旧分类为最终定义。
 
 ## 工作原理
 
@@ -43,7 +53,7 @@ Agent 根据实际任务生成路径并上报进度。插件将状态按 Session
 打开 macOS Terminal、Windows PowerShell 或 Linux 终端，在任意目录中逐行执行：
 
 ```bash
-pnpm dlx @deepseek-ai/dsh plugin --profile web add github:caracacara22/your-turn-dsh
+pnpm dlx @deepseek-ai/dsh plugin --profile web add github:your-turn-lab/your-turn-dsh
 pnpm dlx @deepseek-ai/dsh web
 ```
 
@@ -60,7 +70,7 @@ pnpm dlx @deepseek-ai/dsh plugin --profile web remove your-turn-dsh
 ## 本地开发
 
 ```bash
-git clone https://github.com/caracacara22/your-turn-dsh.git
+git clone https://github.com/your-turn-lab/your-turn-dsh.git
 cd your-turn-dsh
 pnpm install
 pnpm run build:client
@@ -72,7 +82,7 @@ dsh web --port 3081
 
 ## 如何触发
 
-所有任务都会生成实时路径；简单任务可以只包含一个节点。插件注入的规则会要求 Agent：
+以下规则描述当前 `renmin-v1` 原型行为：
 
 1. 在任何实质执行前发布用户可理解的任务路径。
 2. 在工作真实发生后更新主步骤和子步骤。
@@ -80,6 +90,8 @@ dsh web --port 3081
 4. 仅在成长价值高或显著影响结果且依赖用户取舍时召回。
 
 是否展示路径与用户身份无关；“实习生、大学生、初级从业者”等身份只影响是否适合进行成长型召回。召回位置由当前模型结合任务、用户角色、已有证据和后续影响动态判断，不保证所有场景都能准确识别。
+
+当前中客松迭代正在重新研究和明确：什么情况下值得占用人的有限注意力，以及如何把这部分判断从较隐性的 Agent 行为变成更可观察、可验证的产品机制。
 
 ## 模型配置
 
@@ -108,6 +120,17 @@ Your Turn 不保存 API Key，也不直接发起独立模型请求。它使用�
 pnpm run verify
 pnpm pack --dry-run
 ```
+
+## 团队与贡献
+
+### Renmin v1 · 初始原型
+
+- **[@luoqingru2017-blip](https://github.com/luoqingru2017-blip)**：项目发起与产品主导。负责问题定义、整体产品方向与范围收敛、用户研究、项目推进、Demo 场景与路演。具体产品方案在这一框架下，与 @caracacara22 持续共同讨论和迭代决定。
+- **[@caracacara22](https://github.com/caracacara22)**：产品共创、设计与工程主力。参与产品方向与关键机制讨论，主要负责初版插件的技术实现、交互与视觉落地，并参与 Demo 与路演方案完善。
+
+### Zhongkesong 2026 · 当前迭代
+
+当前阶段的成员与贡献将在实际工作发生后持续记录。
 
 ## 参与贡献
 
