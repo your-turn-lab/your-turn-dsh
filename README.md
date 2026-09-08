@@ -10,7 +10,7 @@ Your Turn 是一个 DeepSeek Harness Web 插件，起源于中国人民大学 Bu
 
 - `renmin-v1`：人大 Build with Care 获奖原型基线。
 - `zhongkesong-2026`：当前迭代分支，产品与工程方案正在继续收敛。
-- `main`：目前保留人大版本的稳定基线。
+- `ruc-build-with-care`：人大 Build with Care 获奖版本分支。
 
 ## Renmin v1 已实现能力
 
