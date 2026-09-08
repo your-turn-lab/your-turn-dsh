@@ -125,7 +125,7 @@ pnpm pack --dry-run
 
 ### Renmin v1 · 初始原型
 
-- **[@luoqingru2017-blip](https://github.com/luoqingru2017-blip)**：项目发起与产品主导。负责问题定义、整体产品方向与范围收敛、用户研究、项目推进、Demo 场景与路演。具体产品方案在这一框架下，与 @caracacara22 持续共同讨论和迭代决定。
+- **[@paperdinosaur](https://github.com/paperdinosaur)**：项目发起与产品主导。负责问题定义、整体产品方向与范围收敛、用户研究、项目推进、Demo 场景与路演。具体产品方案在这一框架下，与 @caracacara22 持续共同讨论和迭代决定。
 - **[@caracacara22](https://github.com/caracacara22)**：产品共创、设计与工程主力。参与产品方向与关键机制讨论，主要负责初版插件的技术实现、交互与视觉落地，并参与 Demo 与路演方案完善。
 
 ### Zhongkesong 2026 · 当前迭代
