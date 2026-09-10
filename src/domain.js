@@ -1,6 +1,8 @@
 /** @typedef {'agent' | 'human_leads' | 'agent_coaches'} CollaborationMode */
 /** @typedef {'pending' | 'in_progress' | 'waiting_for_user' | 'awaiting_feedback' | 'feedback_ready' | 'completed' | 'skipped'} NodeStatus */
 
+import { normalizeTaskProfile } from './recall/recallBudget.js';
+
 export const MODES = Object.freeze({ agent: 'agent', humanLeads: 'human_leads', agentCoaches: 'agent_coaches' });
 export const STATUS = Object.freeze({
   pending: 'pending',
@@ -48,6 +50,9 @@ export function createSessionState(sessionId, agentInfo = {}) {
     id: sessionId, title: '等待 Agent 发布任务路径', scenario: '当前 DSH 会话', runMode: 'agent', revision: 1,
     selectedNodeId: null, nodes: [], suggestions: [], interventions: [], impacts: [], planRevisions: [], outcome: null, finalAcceptedAt: null, pendingDecision: null,
     pathSync: null, runCompletion: null,
+    taskProfile: normalizeTaskProfile(),
+    recallState: { recallCount: 0, lastRecallAt: null, lastRecallNodeId: null },
+    recallDecisions: [],
     telemetry: { agentStatus: 'idle', turn: 0, step: 0, currentTool: null, lastEvent: 'session-attached' },
     agent: { provider: agentInfo.provider, model: agentInfo.model },
   };
@@ -78,6 +83,8 @@ export function publishTaskPlan(previous, plan) {
   });
   state.selectedNodeId = state.nodes[0].id;
   state.suggestions = []; state.interventions = []; state.impacts = []; state.planRevisions = []; state.pendingDecision = null; state.outcome = null; state.finalAcceptedAt = null; state.runCompletion = null;
+  state.recallState = { recallCount: 0, lastRecallAt: null, lastRecallNodeId: null };
+  state.recallDecisions = [];
   markInSync(state);
   state.revision += 1;
   return state;
@@ -166,6 +173,38 @@ export function addSystemSuggestion(previous, suggestion) {
   return state;
 }
 
+export function updateTaskProfile(previous, taskProfile) {
+  const state = clone(previous);
+  state.taskProfile = normalizeTaskProfile({ ...state.taskProfile, ...taskProfile });
+  state.revision += 1;
+  return state;
+}
+
+export function traceRecallDecision(previous, trace) {
+  const state = clone(previous);
+  const entries = Array.isArray(state.recallDecisions) ? state.recallDecisions : [];
+  const decision = trace.recallDecision ?? trace.decision ?? {};
+  const candidate = trace.candidate ?? {};
+  const entry = {
+    id: `recall-${entries.length + 1}`,
+    at: new Date().toISOString(),
+    nodeId: candidate.nodeId,
+    question: candidate.question,
+    tags: Array.isArray(candidate.tags) ? candidate.tags : [],
+    isCritical: Boolean(candidate.isCritical),
+    action: decision.action,
+    reason: decision.reason,
+    recallValue: decision.recallValue,
+    threshold: decision.budget?.threshold,
+    autoRisk: decision.autoRisk,
+    humanValue: decision.humanValue,
+    budget: decision.budget,
+  };
+  state.recallDecisions = [...entries.slice(-19), entry];
+  state.revision += 1;
+  return state;
+}
+
 export function requestHumanDecision(previous, request) {
   let state = clone(previous);
   state.finalAcceptedAt = null;
@@ -178,8 +217,16 @@ export function requestHumanDecision(previous, request) {
   node.status = STATUS.waitingForUser;
   const previousCoach = node.coach;
   node.coach = recallKind === 'growth' ? { phase: 'awaiting_answer', prompt: request.question, materials: request.materials ?? [], userAnswer: previousCoach?.userAnswer, feedback: previousCoach?.feedback } : undefined;
+  if (request.recallDecision) node.lastRecallDecision = clone(request.recallDecision);
   state.selectedNodeId = node.id;
-  state.pendingDecision = { nodeId: node.id, question: request.question, materials: request.materials ?? [], recommendedMode: node.mode, decisionKind: recallKind, requestedAt: new Date().toISOString() };
+  state.pendingDecision = { nodeId: node.id, question: request.question, materials: request.materials ?? [], whyAsk: request.whyAsk, recommendedMode: node.mode, decisionKind: recallKind, requestedAt: new Date().toISOString(), recallDecision: request.recallDecision ? clone(request.recallDecision) : undefined };
+  const currentRecallState = state.recallState ?? {};
+  state.recallState = {
+    ...currentRecallState,
+    recallCount: (currentRecallState.recallCount || 0) + 1,
+    lastRecallAt: Date.now(),
+    lastRecallNodeId: node.id,
+  };
   state = addSystemSuggestion(state, { nodeId: node.id, recommendedMode: node.mode, recallKind, reasons: request.reasons?.length ? request.reasons : ['Agent 需要人的判断后才能继续'] });
   state.revision += 1;
   return state;
@@ -418,6 +465,8 @@ export function reduceTask(previous, action) {
   state.revision += 1;
   switch (action.type) {
     case 'SELECT_NODE': findNode(state, action.nodeId); state.selectedNodeId = action.nodeId; return state;
+    case 'UPDATE_TASK_PROFILE':
+      return updateTaskProfile(previous, action.taskProfile);
     case 'ACCEPT_SUGGESTION': {
       state.finalAcceptedAt = null;
       const suggestion = state.suggestions.find((item) => item.id === action.suggestionId);

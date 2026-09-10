@@ -1,4 +1,5 @@
-import { MODES, addSystemSuggestion, applyTelemetry, applyTurnEnd, beginNativeQuestion, createSessionState, endNativeQuestion, finishTaskRun, publishTaskPlan, requestHumanDecision, resolveHumanDecision, reviseTaskNode, updateTaskNode, updateTaskSubstep } from './domain.js';
+import { MODES, addSystemSuggestion, applyTelemetry, applyTurnEnd, beginNativeQuestion, createSessionState, endNativeQuestion, finishTaskRun, publishTaskPlan, requestHumanDecision, resolveHumanDecision, reviseTaskNode, traceRecallDecision, updateTaskNode, updateTaskSubstep } from './domain.js';
+import { decideRecall } from './recall/recallPolicy.js';
 
 const OWN_TOOLS = new Set(['publish_task_plan', 'update_task_node', 'update_task_substep', 'revise_task_node', 'finish_task_run', 'suggest_human_involvement', 'request_human_decision']);
 
@@ -24,7 +25,18 @@ function replayOwnTool(state, name, args, text) {
   if (name === 'finish_task_run') state = finishTaskRun(state, { summary: args.summary, nodeResults: (args.node_results ?? []).map((item) => ({ nodeId: item.node_id, status: item.status, result: item.result })) });
   if (name === 'suggest_human_involvement') state = addSystemSuggestion(state, { nodeId: args.node_id, recommendedMode: args.recommended_mode, recallKind: args.decision_kind, reasons: args.reasons });
   if (name === 'request_human_decision') {
-    state = requestHumanDecision(state, { nodeId: args.node_id, question: args.question, recommendedMode: args.recommended_mode, decisionKind: args.decision_kind, materials: args.materials, reasons: args.reasons });
+    const candidate = {
+      nodeId: args.node_id,
+      question: args.question,
+      options: args.options ?? [],
+      reason: args.reasons?.join('；') ?? '',
+      tags: args.tags ?? [],
+      isCritical: Boolean(args.isCritical),
+    };
+    const recallDecision = decideRecall({ candidate, sessionRecallState: state.recallState, taskProfile: state.taskProfile });
+    state = traceRecallDecision(state, { candidate, recallDecision });
+    if (/Recall suppressed by recall policy/i.test(text)) return state;
+    state = requestHumanDecision(state, { nodeId: args.node_id, question: args.question, recommendedMode: args.recommended_mode, decisionKind: args.decision_kind, materials: args.materials, reasons: args.reasons, whyAsk: args.whyAsk, recallDecision });
     const match = text.match(/Mode: ([a-z_]+)\. Response: ([\s\S]*)$/);
     if (match) state = resolveHumanDecision(state, { nodeId: args.node_id, mode: Object.values(MODES).includes(match[1]) ? match[1] : MODES.agent, response: match[2] });
   }

@@ -15,6 +15,7 @@ const allowedActions = new Set([
   'REVISE_SUBSTEP',
   'ACCEPT_FINAL_RESULT',
   'REQUEST_PATH_SYNC',
+  'UPDATE_TASK_PROFILE',
 ]);
 
 function ok(value) { return { ok: true, value }; }

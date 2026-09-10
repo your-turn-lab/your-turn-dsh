@@ -1,9 +1,11 @@
 import { createUserMessage } from '@deepseek-ai/dsh-llm';
 import { defineTool } from '@deepseek-ai/dsh-tools';
-import { MODES, STATUS, addSystemSuggestion, finishTaskRun, publishTaskPlan, requestHumanDecision, resolveHumanDecision, reviseTaskNode, updateTaskNode, updateTaskSubstep } from './domain.js';
+import { MODES, STATUS, addSystemSuggestion, finishTaskRun, publishTaskPlan, requestHumanDecision, resolveHumanDecision, reviseTaskNode, traceRecallDecision, updateTaskNode, updateTaskSubstep } from './domain.js';
+import { RECALL_TAGS } from './recall/recallScorer.js';
+import { decideRecall } from './recall/recallPolicy.js';
 
 const textOutput = {
-  schema: { type: 'object', additionalProperties: false, properties: { ok: { type: 'boolean', required: true }, message: { type: 'string', required: true } } },
+  schema: { type: 'object', additionalProperties: true, properties: { ok: { type: 'boolean', required: true }, message: { type: 'string', required: true }, status: { type: 'string' }, recallDecision: { type: 'object', additionalProperties: true } } },
   render: (_args, value) => [{ type: 'text', text: value.message }],
 };
 
@@ -29,6 +31,7 @@ const CIRCLED_NUMBER = new Map([
   ['①', '1'], ['②', '2'], ['③', '3'], ['④', '4'], ['⑤', '5'],
   ['⑥', '6'], ['⑦', '7'], ['⑧', '8'], ['⑨', '9'], ['⑩', '10'],
 ]);
+const RECALL_TAG_VALUES = Object.values(RECALL_TAGS);
 
 function normalizeQuestionMarkers(value) {
   return value.replace(/[①②③④⑤⑥⑦⑧⑨⑩]/gu, (marker) => ` ${CIRCLED_NUMBER.get(marker)}) `)
@@ -103,7 +106,9 @@ export function buildDecisionCard(args, reviewRound = false) {
   const materialText = facts.length
     ? facts.map((item) => `- ${item.replace(/\s+/gu, ' ').trim()}`).join('\n')
     : '当前判断所需的前序信息已准备完成。';
-  const reasonText = args.reasons?.length
+  const reasonText = args.whyAsk
+    ? compactText(args.whyAsk, 120)
+    : args.reasons?.length
     ? args.reasons.slice(0, 2).map((item) => compactText(item, 72)).join('；')
     : '这个判断会影响后续执行方向。';
   const boundaryText = boundaries.length ? `\n\n注意：${boundaries.join('；')}` : '';
@@ -268,16 +273,39 @@ export function registerAgentTools(ctx, sessions) {
 
   ctx.tools.register(defineTool({
     name: 'request_human_decision',
-    description: 'Pause at a decision that genuinely requires the user. Publish materials and a concrete question. The same tool call waits for the answer, then returns it so this same Agent turn can continue.',
-    parameters: { node_id: { type: 'string', required: true }, question: { type: 'string', required: true }, recommended_mode: { type: 'string', enum: Object.values(MODES), required: true }, decision_kind: { type: 'string', enum: ['growth', 'direction'], required: true, description: 'Use growth when doing the judgment helps the user practice a useful skill; use direction when an important result depends on the user’s preference or context.' }, options: { type: 'array', description: 'Zero to three concrete task-level answers. Use no options when an independent written judgment is more appropriate. Never put collaboration modes here.', items: { type: 'object', additionalProperties: false, properties: { label: { type: 'string', required: true }, description: { type: 'string' } } } }, materials: { type: 'array', required: true, items: { type: 'string' } }, reasons: { type: 'array', required: true, items: { type: 'string' } }, fallback_action: { type: 'string', description: 'One concise sentence describing what the Agent will do if the user delegates this decision.' } },
+    description: 'Call request_human_decision only when the decision is important enough to interrupt the user. Provide tags to explain why the recall is valuable: preference_dependent, downstream_impact, irreversible, core_judgment, learning_value, ownership_value. Do not call this tool for minor wording, formatting, naming, or low-impact choices. The same tool call waits for the answer when policy allows the recall.',
+    parameters: { node_id: { type: 'string', required: true }, question: { type: 'string', required: true }, recommended_mode: { type: 'string', enum: Object.values(MODES), required: true }, decision_kind: { type: 'string', enum: ['growth', 'direction'], required: true, description: 'Use growth when doing the judgment helps the user practice a useful skill; use direction when an important result depends on the user’s preference or context.' }, options: { type: 'array', description: 'Zero to three concrete task-level answers. Use no options when an independent written judgment is more appropriate. Never put collaboration modes here.', items: { type: 'object', additionalProperties: false, properties: { label: { type: 'string', required: true }, description: { type: 'string' } } } }, materials: { type: 'array', required: true, items: { type: 'string' } }, reasons: { type: 'array', required: true, items: { type: 'string' } }, whyAsk: { type: 'string', description: 'A concise user-facing explanation of why this specific moment is worth interrupting for.' }, tags: { type: 'array', items: { type: 'string', enum: RECALL_TAG_VALUES } }, isCritical: { type: 'boolean' }, fallback_action: { type: 'string', description: 'One concise sentence describing what the Agent will do if the user delegates this decision.' } },
     output: textOutput,
     async execute(args, exec) {
       const id = sessionId(exec);
       const before = sessions.state(id);
       const reviewRound = before.interventions.some((item) => item.nodeId === args.node_id && (item.kind === 'coach_answer' || item.kind === 'coach_revision'));
       const effectiveArgs = args;
+      const candidate = {
+        nodeId: effectiveArgs.node_id,
+        question: effectiveArgs.question,
+        options: effectiveArgs.options ?? [],
+        reason: effectiveArgs.reasons?.join('；') ?? '',
+        tags: effectiveArgs.tags ?? [],
+        isCritical: Boolean(effectiveArgs.isCritical),
+      };
+      const recallDecision = decideRecall({
+        candidate,
+        sessionRecallState: before.recallState,
+        taskProfile: before.taskProfile,
+      });
+      const traced = traceRecallDecision(before, { candidate, recallDecision });
+      if (recallDecision.action === 'AUTO') {
+        sessions.replace(id, traced);
+        return {
+          ok: true,
+          status: 'suppressed',
+          message: `Recall suppressed by recall policy. Recall Value: ${recallDecision.recallValue.toFixed(2)}; Threshold: ${recallDecision.budget.threshold.toFixed(2)}.`,
+          recallDecision,
+        };
+      }
       if (!reviewRound && effectiveArgs.decision_kind === 'direction' && (!Array.isArray(effectiveArgs.options) || effectiveArgs.options.length < 2 || effectiveArgs.options.length > 3)) throw new Error('Direction recalls require 2–3 concrete task-level options.');
-      sessions.update(id, (state) => requestHumanDecision(state, { nodeId: effectiveArgs.node_id, question: effectiveArgs.question, recommendedMode: effectiveArgs.recommended_mode, decisionKind: effectiveArgs.decision_kind, materials: effectiveArgs.materials, reasons: effectiveArgs.reasons }));
+      sessions.replace(id, requestHumanDecision(traced, { nodeId: effectiveArgs.node_id, question: effectiveArgs.question, recommendedMode: effectiveArgs.recommended_mode, decisionKind: effectiveArgs.decision_kind, materials: effectiveArgs.materials, reasons: effectiveArgs.reasons, whyAsk: effectiveArgs.whyAsk, recallDecision }));
       const card = buildDecisionCard(effectiveArgs, reviewRound);
       try {
         const result = await ctx.userQuestions.ask({
@@ -287,7 +315,7 @@ export function registerAgentTools(ctx, sessions) {
         const answer = result.answers[0];
         const { mode, response } = resolveDecisionAnswer(answer, effectiveArgs.recommended_mode, reviewRound, effectiveArgs.decision_kind);
         sessions.update(id, (state) => resolveHumanDecision(state, { nodeId: effectiveArgs.node_id, mode, response }));
-        return { ok: true, message: `Human decision received. Mode: ${mode}. Response: ${response}` };
+        return { ok: true, status: 'awaiting_human', message: `Human decision received. Mode: ${mode}. Response: ${response}`, recallDecision };
       } catch (error) {
         sessions.replace(id, before);
         throw error;
@@ -298,7 +326,7 @@ export function registerAgentTools(ctx, sessions) {
   ctx.systemPrompt.section({
     name: 'tool:human-decision-loop',
     order: 4950,
-    text: 'For every user task, call publish_task_plan as the first tool action before research, execution, or the final answer. This applies even to simple tasks: use one concise node when one node is enough, and use up to ten user-understandable outcome steps for larger work. Whether a path is shown is independent of user identity. Identity such as intern, student, junior, or an explicit desire to learn affects only whether a growth recall is useful. Do not expose hidden reasoning or raw command logs. Update observable substeps only after the work happens, using one concise sentence with the action and key result. Treat answers returned by any DSH question tool as authoritative task input: if an answer changes the scope, deliverable, method, or acceptance criteria, call revise_task_node on the affected unfinished path node before continuing. Do not leave an obsolete deliverable in the visible path. Recall the user only for either (1) a core professional judgment the user benefits from practicing, or (2) a high-impact direction choice that genuinely depends on user preference or context. Routine search, formatting, checking, and reversible execution should continue autonomously. Consider a growth judgment for an intern, student, junior, or user who explicitly wants to learn, but do not interrupt merely to ask for approval. Ask one direct question and provide at most three decision-essential materials. Direction recalls require 2–3 concrete task options; growth recalls omit options so the user answers independently. The same tool call waits for the answer. For a growth recall, review the answer against evidence, then call request_human_decision again for revision or confirmation. When a [Human path intervention] arrives, revise the named step and affected downstream work, acknowledge it through the progress tools, then continue. Before emitting the final user-facing answer, always call finish_task_run; explicitly mark work removed by a user decision as skipped, never silently leave nodes in progress. If finish_task_run rejects, reconcile the listed nodes and call it again.',
+    text: 'For every user task, call publish_task_plan as the first tool action before research, execution, or the final answer. This applies even to simple tasks: use one concise node when one node is enough, and use up to ten user-understandable outcome steps for larger work. Whether a path is shown is independent of user identity. Identity such as intern, student, junior, or an explicit desire to learn affects only whether a growth recall is useful. Do not expose hidden reasoning or raw command logs. Update observable substeps only after the work happens, using one concise sentence with the action and key result. Treat answers returned by any DSH question tool as authoritative task input: if an answer changes scope, deliverable, method, or acceptance criteria, call revise_task_node on the affected unfinished path node before continuing. Do not leave an obsolete deliverable in the visible path. Recall the user only for either (1) a core professional judgment the user benefits from practicing, or (2) a high-impact direction choice that genuinely depends on user preference or context. Routine search, formatting, checking, and reversible execution should continue autonomously. Consider a growth judgment for an intern, student, junior, or user who explicitly wants to learn, but do not interrupt merely to ask for approval. When calling request_human_decision, include whyAsk plus value tags from this fixed set: preference_dependent, downstream_impact, irreversible, core_judgment, learning_value, ownership_value. Use isCritical only for submit, publish, delete, overwrite, final confirmation, or irreversible operations. Ask one direct question and provide at most three decision-essential materials. Direction recalls require 2–3 concrete task options when policy allows the recall; growth recalls omit options so the user answers independently. The same tool call waits for the answer when recall is allowed, or returns suppressed when the current recall value is below the dynamic interruption threshold. For a growth recall, review the answer against evidence, then call request_human_decision again for revision or confirmation. When a [Human path intervention] arrives, revise the named step and affected downstream work, acknowledge it through the progress tools, then continue. Before emitting the final user-facing answer, always call finish_task_run; explicitly mark work removed by a user decision as skipped, never silently leave nodes in progress. If finish_task_run rejects, reconcile the listed nodes and call it again.',
   });
 }
 

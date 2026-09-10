@@ -52,7 +52,7 @@ test('tools publish a model-generated path and pause for a decision', async () =
     { id: 'deliver', title: '生成结果', objective: '交付', instruction: '执行', rationale: '机械工作', mode: 'agent' },
   ] }, { agent: liveAgent, signal: new AbortController().signal });
   const decision = definitions.find((tool) => tool.name === 'request_human_decision');
-  const result = await decision.execute({ node_id: 'decide', question: '采用哪个方向？', recommended_mode: 'human_leads', decision_kind: 'direction', options: [{ label: '方向 A' }, { label: '方向 B' }], materials: ['事实'], reasons: ['影响最终结果'] }, { agent: liveAgent, signal: new AbortController().signal });
+  const result = await decision.execute({ node_id: 'decide', question: '采用哪个方向？', recommended_mode: 'human_leads', decision_kind: 'direction', options: [{ label: '方向 A' }, { label: '方向 B' }], materials: ['事实'], reasons: ['影响最终结果'], whyAsk: '这个方向会影响最终交付。', tags: ['preference_dependent', 'downstream_impact', 'core_judgment', 'ownership_value'] }, { agent: liveAgent, signal: new AbortController().signal });
   assert.match(result.message, /方向 B/);
   assert.equal(sessions.state(liveAgent.id).interventions.at(-1).kind, 'direction_answer');
   assert.equal(sections.length, 1);

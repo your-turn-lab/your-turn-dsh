@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { MODES, STATUS, applyTurnEnd, beginNativeQuestion, buildOutcomeSummary, createSessionState, endNativeQuestion, finishTaskRun, publishTaskPlan, reduceTask, requestHumanDecision, resolveHumanDecision, reviseTaskNode, updateTaskNode, updateTaskSubstep } from '../src/domain.js';
+import { MODES, STATUS, applyTurnEnd, beginNativeQuestion, buildOutcomeSummary, createSessionState, endNativeQuestion, finishTaskRun, publishTaskPlan, reduceTask, requestHumanDecision, resolveHumanDecision, reviseTaskNode, traceRecallDecision, updateTaskNode, updateTaskSubstep } from '../src/domain.js';
 
 const plan = { title: '发布新功能', goal: '从信息到交付', nodes: [
   { id: 'research', title: '整理信息', objective: '形成事实基础', instruction: '整理已有材料', rationale: '适合自动执行', mode: MODES.agent, substeps: [{ id: 'collect', title: '收集材料', instruction: '读取输入' }, { id: 'organize', title: '整理证据', instruction: '保留来源' }] },
@@ -11,9 +11,44 @@ const plan = { title: '发布新功能', goal: '从信息到交付', nodes: [
 test('a live task starts empty and accepts a model-published path', () => {
   const empty = createSessionState('session-a');
   assert.equal(empty.nodes.length, 0);
+  assert.deepEqual(empty.taskProfile, { taskSize: 'medium', participationGoal: 'balanced' });
   const state = publishTaskPlan(empty, plan);
   assert.equal(state.nodes.length, 3);
   assert.equal(state.nodes[0].status, STATUS.inProgress);
+});
+
+test('task profile can be updated for dynamic recall budgets', () => {
+  const state = reduceTask(createSessionState('profile'), {
+    type: 'UPDATE_TASK_PROFILE',
+    taskProfile: {
+      taskSize: 'long',
+      participationGoal: 'learning',
+    },
+  });
+
+  assert.deepEqual(state.taskProfile, { taskSize: 'long', participationGoal: 'learning' });
+});
+
+test('recall decisions are traced for demo and debug visibility', () => {
+  const state = traceRecallDecision(createSessionState('trace'), {
+    candidate: {
+      nodeId: 'judge',
+      question: '采用哪个方向？',
+      tags: ['core_judgment'],
+      isCritical: false,
+    },
+    recallDecision: {
+      action: 'RECALL',
+      reason: 'recall_value_passed',
+      recallValue: 0.67,
+      autoRisk: 0.3,
+      humanValue: 0.86,
+      budget: { threshold: 0.6, recallCount: 0, maxRecall: 3 },
+    },
+  });
+
+  assert.equal(state.recallDecisions.length, 1);
+  assert.equal(state.recallDecisions[0].threshold, 0.6);
 });
 
 test('substeps and nodes advance from progress updates', () => {
