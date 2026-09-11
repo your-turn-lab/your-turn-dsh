@@ -2,6 +2,8 @@
 /** @typedef {'pending' | 'in_progress' | 'waiting_for_user' | 'awaiting_feedback' | 'feedback_ready' | 'completed' | 'skipped'} NodeStatus */
 
 import { normalizeTaskProfile } from './recall/recallBudget.js';
+import { decideRecall } from './recall/recallPolicy.js';
+import { normalizeRecallTags } from './recall/recallScorer.js';
 
 export const MODES = Object.freeze({ agent: 'agent', humanLeads: 'human_leads', agentCoaches: 'agent_coaches' });
 export const STATUS = Object.freeze({
@@ -57,6 +59,25 @@ export function createSessionState(sessionId, agentInfo = {}) {
     agent: { provider: agentInfo.provider, model: agentInfo.model },
   };
 }
+function recallKindFor(value, fallbackMode) {
+  return ['growth', 'direction'].includes(value) ? value : fallbackMode === MODES.agentCoaches ? 'growth' : 'direction';
+}
+function fallbackRecallTagsForKind(recallKind) {
+  return recallKind === 'growth' ? ['core_judgment', 'learning_value'] : ['preference_dependent', 'downstream_impact'];
+}
+function nodeRecallCandidate(node, overrides = {}) {
+  const recallKind = recallKindFor(overrides.decisionKind ?? node.recallKind, overrides.recommendedMode ?? node.mode);
+  const tags = normalizeRecallTags(overrides.tags ?? node.recallTags ?? fallbackRecallTagsForKind(recallKind));
+  return {
+    nodeId: node.id,
+    question: overrides.question ?? node.objective,
+    options: overrides.options ?? [],
+    reason: overrides.reason ?? overrides.whyAsk ?? node.recallReason ?? node.rationale,
+    tags,
+    isCritical: Boolean(overrides.isCritical ?? node.isCritical),
+    source: overrides.source,
+  };
+}
 
 export function publishTaskPlan(previous, plan) {
   const state = clone(previous);
@@ -76,6 +97,9 @@ export function publishTaskPlan(previous, plan) {
       status: index === 0 ? STATUS.inProgress : STATUS.pending,
       activity: index === 0 ? 'Agent 正在执行此节点。' : '等待前序节点完成。',
       rationale: String(node.rationale || '由 Agent 根据当前任务显式规划。').trim(), evidence: [],
+      recallTags: normalizeRecallTags(node.recall_tags ?? node.recallTags ?? []),
+      recallReason: String(node.recall_reason ?? node.recallReason ?? '').trim(),
+      isCritical: Boolean(node.is_critical ?? node.isCritical),
       ...(node.recallKind ? { recallKind: node.recallKind } : {}),
     };
     value.substeps = normalizeSubsteps({ ...value, substeps: node.substeps });
@@ -164,10 +188,13 @@ export function addSystemSuggestion(previous, suggestion) {
   const state = clone(previous);
   markInSync(state);
   const node = findNode(state, suggestion.nodeId);
-  const recallKind = ['growth', 'direction'].includes(suggestion.recallKind) ? suggestion.recallKind : suggestion.recommendedMode === MODES.agentCoaches ? 'growth' : 'direction';
+  const recallKind = recallKindFor(suggestion.recallKind, suggestion.recommendedMode);
   node.recallKind = recallKind;
+  node.recallTags = normalizeRecallTags(suggestion.tags ?? node.recallTags ?? fallbackRecallTagsForKind(recallKind));
+  if (suggestion.whyAsk) node.recallReason = String(suggestion.whyAsk).trim();
+  if (suggestion.isCritical !== undefined) node.isCritical = Boolean(suggestion.isCritical);
   const existing = state.suggestions.find((item) => item.nodeId === suggestion.nodeId && item.status === 'open');
-  const value = { id: existing?.id ?? `suggestion-${state.suggestions.length + 1}`, nodeId: suggestion.nodeId, recommendedMode: suggestion.recommendedMode, recallKind, reasons: (suggestion.reasons || []).map((label, index) => ({ code: `reason-${index + 1}`, label })), status: 'open' };
+  const value = { id: existing?.id ?? `suggestion-${state.suggestions.length + 1}`, nodeId: suggestion.nodeId, recommendedMode: suggestion.recommendedMode, recallKind, reasons: (suggestion.reasons || []).map((label, index) => ({ code: `reason-${index + 1}`, label })), tags: node.recallTags, whyAsk: suggestion.whyAsk, isCritical: Boolean(suggestion.isCritical), status: 'open' };
   if (existing) Object.assign(existing, value); else state.suggestions.push(value);
   state.revision += 1;
   return state;
@@ -190,7 +217,8 @@ export function traceRecallDecision(previous, trace) {
     at: new Date().toISOString(),
     nodeId: candidate.nodeId,
     question: candidate.question,
-    tags: Array.isArray(candidate.tags) ? candidate.tags : [],
+    source: candidate.source ?? trace.source,
+    tags: normalizeRecallTags(candidate.tags),
     isCritical: Boolean(candidate.isCritical),
     action: decision.action,
     reason: decision.reason,
@@ -205,14 +233,39 @@ export function traceRecallDecision(previous, trace) {
   return state;
 }
 
+export function evaluateRecallForNode(previous, nodeId, options = {}) {
+  const state = clone(previous);
+  const node = findNode(state, nodeId);
+  const candidate = nodeRecallCandidate(node, options);
+  const computed = decideRecall({
+    candidate,
+    sessionRecallState: state.recallState,
+    taskProfile: state.taskProfile,
+    now: options.now,
+  });
+  const recallDecision = options.forceAction
+    ? { ...computed, action: options.forceAction, reason: options.forceReason ?? computed.reason }
+    : computed;
+  const traced = traceRecallDecision(state, { candidate, recallDecision, source: options.source });
+  const tracedNode = findNode(traced, node.id);
+  tracedNode.lastRecallDecision = clone(recallDecision);
+  tracedNode.recallTags = candidate.tags;
+  if (candidate.reason) tracedNode.recallReason = String(candidate.reason);
+  tracedNode.isCritical = candidate.isCritical;
+  return { state: traced, candidate, recallDecision };
+}
+
 export function requestHumanDecision(previous, request) {
   let state = clone(previous);
   state.finalAcceptedAt = null;
   markInSync(state);
   if (state.pendingDecision) throw new Error('Resolve the current human decision before requesting another one.');
   const node = findNode(state, request.nodeId);
-  const recallKind = ['growth', 'direction'].includes(request.decisionKind) ? request.decisionKind : request.recommendedMode === MODES.agentCoaches ? 'growth' : 'direction';
+  const recallKind = recallKindFor(request.decisionKind, request.recommendedMode);
   node.recallKind = recallKind;
+  node.recallTags = normalizeRecallTags(request.tags ?? node.recallTags ?? fallbackRecallTagsForKind(recallKind));
+  if (request.whyAsk) node.recallReason = String(request.whyAsk).trim();
+  if (request.isCritical !== undefined) node.isCritical = Boolean(request.isCritical);
   node.mode = recallKind === 'growth' ? MODES.agentCoaches : MODES.humanLeads;
   node.status = STATUS.waitingForUser;
   const previousCoach = node.coach;
@@ -461,7 +514,7 @@ function describeDecision(state, item) {
 function assertEditable(node) { if (isTerminalStatus(node.status)) throw new Error('Completed or skipped nodes cannot be edited.'); }
 
 export function reduceTask(previous, action) {
-  const state = clone(previous);
+  let state = clone(previous);
   state.revision += 1;
   switch (action.type) {
     case 'SELECT_NODE': findNode(state, action.nodeId); state.selectedNodeId = action.nodeId; return state;
@@ -476,7 +529,21 @@ export function reduceTask(previous, action) {
       node.recallKind = action.mode === MODES.agent ? undefined : ['growth', 'direction'].includes(action.recallKind) ? action.recallKind : action.mode === MODES.agentCoaches ? 'growth' : 'direction';
       node.status = action.mode === MODES.agent ? STATUS.inProgress : STATUS.waitingForUser;
       suggestion.status = 'accepted';
+      if (action.mode !== MODES.agent) {
+        state = evaluateRecallForNode(state, node.id, {
+          source: 'user_initiated_suggestion',
+          decisionKind: node.recallKind,
+          recommendedMode: action.mode,
+          tags: suggestion.tags,
+          whyAsk: suggestion.whyAsk,
+          isCritical: suggestion.isCritical,
+          forceAction: 'RECALL',
+          forceReason: 'user_initiated',
+        }).state;
+      }
+      const updatedNode = findNode(state, suggestion.nodeId);
       appendIntervention(state, { source: 'user', suggestedBy: 'system', kind: 'mode_change', recallKind: node.recallKind, nodeId: node.id, before, after: action.mode });
+      updatedNode.lastDecisionId = state.interventions.at(-1)?.id;
       return state;
     }
     case 'DISMISS_SUGGESTION': {
@@ -494,7 +561,17 @@ export function reduceTask(previous, action) {
       const before = node.mode; node.mode = action.mode;
       node.recallKind = action.mode === MODES.agentCoaches ? 'growth' : action.mode === MODES.humanLeads ? 'direction' : undefined;
       node.status = action.mode === MODES.agent ? STATUS.inProgress : STATUS.waitingForUser;
-      appendIntervention(state, { source: 'user', kind: 'mode_change', recallKind: node.recallKind, nodeId: node.id, before, after: action.mode });
+      if (action.mode !== MODES.agent) {
+        state = evaluateRecallForNode(state, node.id, {
+          source: 'user_initiated_mode_change',
+          decisionKind: node.recallKind,
+          recommendedMode: action.mode,
+          forceAction: 'RECALL',
+          forceReason: 'user_initiated',
+        }).state;
+      }
+      const updatedNode = findNode(state, action.nodeId);
+      appendIntervention(state, { source: 'user', kind: 'mode_change', recallKind: updatedNode.recallKind, nodeId: updatedNode.id, before, after: action.mode });
       return state;
     }
     case 'EDIT_INSTRUCTION': {
@@ -502,10 +579,18 @@ export function reduceTask(previous, action) {
       const instruction = String(action.instruction ?? '').trim();
       if (!instruction) throw new Error('Instruction cannot be empty.');
       if (node.instruction === instruction) return previous;
+      state = evaluateRecallForNode(state, node.id, {
+        source: 'user_initiated_instruction_edit',
+        question: `修改“${node.title}”的执行要求`,
+        tags: normalizeRecallTags([...node.recallTags ?? [], 'ownership_value', 'downstream_impact']),
+        forceAction: 'RECALL',
+        forceReason: 'user_initiated',
+      }).state;
+      const updatedNode = findNode(state, action.nodeId);
       const decision = appendIntervention(state, { source: 'user', kind: 'instruction_change', nodeId: node.id, before: node.instruction, after: instruction });
-      node.instruction = instruction;
-      for (const candidate of downstreamNodes(state, node)) {
-        candidate.impact = { kind: 'affected', causedBy: decision.id, reason: `${node.title}的执行要求已改变`, sequence: decision.sequence };
+      updatedNode.instruction = instruction;
+      for (const candidate of downstreamNodes(state, updatedNode)) {
+        candidate.impact = { kind: 'affected', causedBy: decision.id, reason: `${updatedNode.title}的执行要求已改变`, sequence: decision.sequence };
         state.impacts.push({ id: `impact-${state.impacts.length + 1}`, decisionId: decision.id, affectedNodeId: candidate.id, before: candidate.activity, after: `需要依据“${instruction}”重新检查`, reason: candidate.impact.reason });
       }
       return state;
@@ -517,14 +602,23 @@ export function reduceTask(previous, action) {
       const instruction = String(action.instruction ?? '').trim();
       if (!instruction) throw new Error('Instruction cannot be empty.');
       const substep = node.substeps[index];
+      state = evaluateRecallForNode(state, node.id, {
+        source: 'user_initiated_substep_revision',
+        question: `修改“${node.title}”中的小步骤“${substep.title}”`,
+        tags: normalizeRecallTags([...node.recallTags ?? [], 'ownership_value']),
+        forceAction: 'RECALL',
+        forceReason: 'user_initiated',
+      }).state;
+      const updatedNode = findNode(state, action.nodeId);
+      const updatedSubstep = updatedNode.substeps[index];
       const decision = appendIntervention(state, { source: 'user', kind: 'substep_revision', nodeId: node.id, substepId: substep.id, before: substep.instruction, after: instruction });
-      substep.instruction = instruction; substep.status = STATUS.inProgress; substep.result = '等待按新要求重做';
-      for (const later of node.substeps.slice(index + 1)) { later.status = STATUS.pending; later.result = ''; }
-      node.status = STATUS.inProgress; node.activity = `正在从“${substep.title}”重新执行。`;
-      node.impact = { kind: 'affected', causedBy: decision.id, reason: `小步骤“${substep.title}”已修改`, sequence: decision.sequence };
-      for (const candidate of downstreamNodes(state, node)) {
-        candidate.impact = { kind: 'affected', causedBy: decision.id, reason: `${node.title}将从“${substep.title}”重做`, sequence: decision.sequence };
-        state.impacts.push({ id: `impact-${state.impacts.length + 1}`, decisionId: decision.id, affectedNodeId: candidate.id, before: candidate.activity, after: `等待“${substep.title}”重做结果`, reason: candidate.impact.reason });
+      updatedSubstep.instruction = instruction; updatedSubstep.status = STATUS.inProgress; updatedSubstep.result = '等待按新要求重做';
+      for (const later of updatedNode.substeps.slice(index + 1)) { later.status = STATUS.pending; later.result = ''; }
+      updatedNode.status = STATUS.inProgress; updatedNode.activity = `正在从“${updatedSubstep.title}”重新执行。`;
+      updatedNode.impact = { kind: 'affected', causedBy: decision.id, reason: `小步骤“${updatedSubstep.title}”已修改`, sequence: decision.sequence };
+      for (const candidate of downstreamNodes(state, updatedNode)) {
+        candidate.impact = { kind: 'affected', causedBy: decision.id, reason: `${updatedNode.title}将从“${updatedSubstep.title}”重做`, sequence: decision.sequence };
+        state.impacts.push({ id: `impact-${state.impacts.length + 1}`, decisionId: decision.id, affectedNodeId: candidate.id, before: candidate.activity, after: `等待“${updatedSubstep.title}”重做结果`, reason: candidate.impact.reason });
       }
       state.outcome = null; return state;
     }

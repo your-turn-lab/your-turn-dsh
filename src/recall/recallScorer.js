@@ -7,8 +7,21 @@ export const RECALL_TAGS = Object.freeze({
   ownershipValue: 'ownership_value',
 });
 
+export const RECALL_TAG_VALUES = Object.freeze(Object.values(RECALL_TAGS));
+
+export function normalizeRecallTags(tags = []) {
+  const allowed = new Set(RECALL_TAG_VALUES);
+  const normalized = [];
+  for (const tag of Array.isArray(tags) ? tags : []) {
+    const value = String(tag || '').trim();
+    if (!allowed.has(value) || normalized.includes(value)) continue;
+    normalized.push(value);
+  }
+  return normalized;
+}
+
 export function scoreRecallCandidate(candidate = {}) {
-  const tags = new Set(Array.isArray(candidate.tags) ? candidate.tags : []);
+  const tags = new Set(normalizeRecallTags(candidate.tags));
 
   const preferenceRisk = tags.has(RECALL_TAGS.preferenceDependent) ? 1 : 0;
   const downstreamImpact = tags.has(RECALL_TAGS.downstreamImpact) ? 1 : 0;

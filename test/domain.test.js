@@ -12,9 +12,15 @@ test('a live task starts empty and accepts a model-published path', () => {
   const empty = createSessionState('session-a');
   assert.equal(empty.nodes.length, 0);
   assert.deepEqual(empty.taskProfile, { taskSize: 'medium', participationGoal: 'balanced' });
-  const state = publishTaskPlan(empty, plan);
+  const state = publishTaskPlan(empty, {
+    ...plan,
+    nodes: plan.nodes.map((node, index) => index === 1
+      ? { ...node, recall_tags: ['core_judgment', 'learning_value', 'not_a_tag', 'core_judgment'], recall_reason: '用户练习判断有价值' }
+      : node),
+  });
   assert.equal(state.nodes.length, 3);
   assert.equal(state.nodes[0].status, STATUS.inProgress);
+  assert.deepEqual(state.nodes[1].recallTags, ['core_judgment', 'learning_value']);
 });
 
 test('task profile can be updated for dynamic recall budgets', () => {
@@ -49,6 +55,26 @@ test('recall decisions are traced for demo and debug visibility', () => {
 
   assert.equal(state.recallDecisions.length, 1);
   assert.equal(state.recallDecisions[0].threshold, 0.6);
+});
+
+test('user initiated My Turn updates recall score for the selected node', () => {
+  let state = publishTaskPlan(createSessionState('manual-recall'), {
+    ...plan,
+    nodes: plan.nodes.map((node, index) => index === 1
+      ? { ...node, mode: MODES.agent, recall_tags: ['core_judgment', 'learning_value'], recall_reason: '用户练习判断有价值' }
+      : node),
+  });
+
+  state = reduceTask(state, {
+    type: 'CHANGE_MODE',
+    nodeId: 'judge',
+    mode: MODES.agentCoaches,
+  });
+
+  assert.equal(state.recallDecisions.at(-1).source, 'user_initiated_mode_change');
+  assert.equal(state.recallDecisions.at(-1).action, 'RECALL');
+  assert.equal(state.nodes[1].lastRecallDecision.reason, 'user_initiated');
+  assert.deepEqual(state.nodes[1].recallTags, ['core_judgment', 'learning_value']);
 });
 
 test('substeps and nodes advance from progress updates', () => {

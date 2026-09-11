@@ -9,28 +9,30 @@ function agent(id = 'agent') {
 
 function setup(questionAnswers = []) {
   const definitions = [];
+  const askedQuestions = [];
   let askCount = 0;
   const ctx = {
     tools: { register(tool) { definitions.push(tool); } },
     systemPrompt: { section() {} },
     userQuestions: {
-      async ask() {
+      async ask(payload) {
         askCount += 1;
+        askedQuestions.push(payload?.questions?.[0]);
         return { answers: [questionAnswers.shift() ?? { skipped: true }] };
       },
     },
   };
   const sessions = new SessionRuntimeStore();
   registerAgentTools(ctx, sessions);
-  return { definitions, sessions, askCount: () => askCount };
+  return { definitions, sessions, askCount: () => askCount, askedQuestions };
 }
 
-async function publishSingleNode(definitions, liveAgent) {
+async function publishSingleNode(definitions, liveAgent, nodePatch = {}) {
   await definitions.find((tool) => tool.name === 'publish_task_plan').execute({
     title: '任务',
     goal: '完成交付',
     nodes: [
-      { id: 'decide', title: '确定方向', objective: '选择方向', instruction: '比较方案', rationale: '影响结果', mode: 'human_leads' },
+      { id: 'decide', title: '确定方向', objective: '选择方向', instruction: '比较方案', rationale: '影响结果', mode: 'human_leads', ...nodePatch },
     ],
   }, { agent: liveAgent, signal: new AbortController().signal });
 }
@@ -58,7 +60,7 @@ test('does not call DSH question service when recall is suppressed', async () =>
 });
 
 test('calls DSH question service when recall passes', async () => {
-  const { definitions, sessions, askCount } = setup([{ selected: ['学术型'] }]);
+  const { definitions, sessions, askCount, askedQuestions } = setup([{ selected: ['学术型'] }]);
   const liveAgent = agent('recall');
   sessions.attach(liveAgent);
   await publishSingleNode(definitions, liveAgent);
@@ -82,7 +84,42 @@ test('calls DSH question service when recall passes', async () => {
 
   assert.equal(result.status, 'awaiting_human');
   assert.equal(askCount(), 1);
+  assert.match(askedQuestions[0].detail, /#### Recall Policy/);
+  assert.match(askedQuestions[0].detail, /Recall Value: 0\./);
   assert.equal(sessions.state(liveAgent.id).recallState.recallCount, 1);
   assert.equal(sessions.state(liveAgent.id).recallState.lastRecallNodeId, 'decide');
   assert.equal(sessions.state(liveAgent.id).interventions.at(-1).kind, 'direction_answer');
+});
+
+test('request recall falls back to node-specific tags when call tags are omitted', async () => {
+  const { definitions, sessions, askCount } = setup([{ selected: ['方向 B'] }]);
+  const liveAgent = agent('node-tags');
+  sessions.attach(liveAgent);
+  await publishSingleNode(definitions, liveAgent, {
+    recall_tags: [
+      'preference_dependent',
+      'downstream_impact',
+      'core_judgment',
+      'ownership_value',
+    ],
+  });
+
+  const result = await definitions.find((tool) => tool.name === 'request_human_decision').execute({
+    node_id: 'decide',
+    question: '采用哪个方向？',
+    recommended_mode: 'human_leads',
+    decision_kind: 'direction',
+    options: [{ label: '方向 A' }, { label: '方向 B' }],
+    materials: ['两个方向都可行'],
+    reasons: ['影响后续结果'],
+  }, { agent: liveAgent, signal: new AbortController().signal });
+
+  assert.equal(result.status, 'awaiting_human');
+  assert.equal(askCount(), 1);
+  assert.deepEqual(sessions.state(liveAgent.id).recallDecisions.at(-1).tags, [
+    'preference_dependent',
+    'downstream_impact',
+    'core_judgment',
+    'ownership_value',
+  ]);
 });
