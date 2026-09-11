@@ -86,7 +86,9 @@ test('calls DSH question service when recall passes', async () => {
   assert.equal(askCount(), 1);
   assert.match(askedQuestions[0].detail, /#### Recall Policy/);
   assert.match(askedQuestions[0].detail, /Recall Value: 0\./);
+  assert.match(askedQuestions[0].detail, /Recall Count: 1 \/ 3/);
   assert.equal(sessions.state(liveAgent.id).recallState.recallCount, 1);
+  assert.equal(sessions.state(liveAgent.id).nodes[0].lastRecallDecision.budget.recallCount, 1);
   assert.equal(sessions.state(liveAgent.id).recallState.lastRecallNodeId, 'decide');
   assert.equal(sessions.state(liveAgent.id).interventions.at(-1).kind, 'direction_answer');
 });

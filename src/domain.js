@@ -78,6 +78,19 @@ function nodeRecallCandidate(node, overrides = {}) {
     source: overrides.source,
   };
 }
+function acceptedRecallDecision(recallDecision, currentRecallState = {}) {
+  if (!recallDecision) return undefined;
+  const recallCountBefore = currentRecallState.recallCount || 0;
+  const recallCount = recallCountBefore + 1;
+  return {
+    ...clone(recallDecision),
+    budget: {
+      ...clone(recallDecision.budget ?? {}),
+      recallCountBefore,
+      recallCount,
+    },
+  };
+}
 
 export function publishTaskPlan(previous, plan) {
   const state = clone(previous);
@@ -270,13 +283,14 @@ export function requestHumanDecision(previous, request) {
   node.status = STATUS.waitingForUser;
   const previousCoach = node.coach;
   node.coach = recallKind === 'growth' ? { phase: 'awaiting_answer', prompt: request.question, materials: request.materials ?? [], userAnswer: previousCoach?.userAnswer, feedback: previousCoach?.feedback } : undefined;
-  if (request.recallDecision) node.lastRecallDecision = clone(request.recallDecision);
-  state.selectedNodeId = node.id;
-  state.pendingDecision = { nodeId: node.id, question: request.question, materials: request.materials ?? [], whyAsk: request.whyAsk, recommendedMode: node.mode, decisionKind: recallKind, requestedAt: new Date().toISOString(), recallDecision: request.recallDecision ? clone(request.recallDecision) : undefined };
   const currentRecallState = state.recallState ?? {};
+  const displayedRecallDecision = acceptedRecallDecision(request.recallDecision, currentRecallState);
+  if (displayedRecallDecision) node.lastRecallDecision = displayedRecallDecision;
+  state.selectedNodeId = node.id;
+  state.pendingDecision = { nodeId: node.id, question: request.question, materials: request.materials ?? [], whyAsk: request.whyAsk, recommendedMode: node.mode, decisionKind: recallKind, requestedAt: new Date().toISOString(), recallDecision: displayedRecallDecision };
   state.recallState = {
     ...currentRecallState,
-    recallCount: (currentRecallState.recallCount || 0) + 1,
+    recallCount: displayedRecallDecision?.budget?.recallCount ?? ((currentRecallState.recallCount || 0) + 1),
     lastRecallAt: Date.now(),
     lastRecallNodeId: node.id,
   };

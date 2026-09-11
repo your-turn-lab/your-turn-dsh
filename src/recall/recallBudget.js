@@ -24,17 +24,15 @@ export function normalizeTaskProfile(taskProfile = {}) {
 export function getRecallBudgetConfig(taskProfile = {}) {
   const profile = normalizeTaskProfile(taskProfile);
 
-  let baseThreshold = 0.6;
+  let baseThreshold = 0.5;
   let maxRecall = 3;
 
   if (profile.taskSize === TASK_SIZES.short) {
-    baseThreshold = 0.75;
-    maxRecall = 1;
+    baseThreshold = 0.65;
   }
 
   if (profile.taskSize === TASK_SIZES.long) {
-    baseThreshold = 0.5;
-    maxRecall = 5;
+    baseThreshold = 0.45;
   }
 
   let goalPenalty = 0;
@@ -65,7 +63,7 @@ export function calculateDynamicThreshold({
   let threshold = config.baseThreshold + config.goalPenalty;
   const recallCount = sessionRecallState.recallCount || 0;
 
-  const budgetPenalty = recallCount >= config.maxRecall ? 0.35 : 0;
+  const budgetPenalty = recallCount >= config.maxRecall ? 1 : 0;
   threshold += budgetPenalty;
 
   const lastRecallAt = sessionRecallState.lastRecallAt;

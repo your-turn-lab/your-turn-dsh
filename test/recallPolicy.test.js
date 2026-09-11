@@ -86,3 +86,28 @@ test('critical recall bypasses budget', () => {
   assert.equal(result.action, 'RECALL');
   assert.equal(result.reason, 'critical_override');
 });
+
+test('non-critical recall stops after the shared budget is exhausted', () => {
+  const result = decideRecall({
+    candidate: {
+      question: '还要不要继续细化方向？',
+      tags: [
+        'preference_dependent',
+        'downstream_impact',
+        'core_judgment',
+        'ownership_value',
+      ],
+      isCritical: false,
+    },
+    taskProfile: {
+      taskSize: 'long',
+      participationGoal: 'learning',
+    },
+    sessionRecallState: {
+      recallCount: 3,
+    },
+  });
+
+  assert.equal(result.action, 'AUTO');
+  assert.equal(result.reason, 'recall_budget_exhausted');
+});

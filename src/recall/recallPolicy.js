@@ -23,6 +23,15 @@ export function decideRecall({
     };
   }
 
+  if (budget.recallCount >= budget.maxRecall) {
+    return {
+      action: 'AUTO',
+      reason: 'recall_budget_exhausted',
+      ...score,
+      budget,
+    };
+  }
+
   const action = score.recallValue >= budget.threshold ? 'RECALL' : 'AUTO';
 
   return {
