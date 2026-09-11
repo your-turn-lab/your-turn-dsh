@@ -57,6 +57,8 @@ test('does not call DSH question service when recall is suppressed', async () =>
   assert.equal(askCount(), 0);
   assert.equal(sessions.state(liveAgent.id).pendingDecision, null);
   assert.equal(sessions.state(liveAgent.id).recallDecisions.at(-1).action, 'AUTO');
+  assert.equal(sessions.state(liveAgent.id).recallState.recallCount, 0);
+  assert.equal(sessions.state(liveAgent.id).nodes[0].lastRecallDecision.action, 'AUTO');
 });
 
 test('calls DSH question service when recall passes', async () => {
