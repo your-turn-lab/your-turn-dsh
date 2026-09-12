@@ -40,27 +40,23 @@ function PreferenceEditor({ s }) {
   const p = s.profileDraft;
   const patch = patch => act('PROFILE_DRAFT', { patch });
   return <div className="preference-editor">
-    <div className="preference-grid">{scenario.questions.map((q, i) => <label key={q.header}><span>{q.header}</span><select aria-label={q.question} value={p.answers[i]} onChange={e => { const answers = [...p.answers]; answers[i] = Number(e.target.value); patch({ answers }); }}>{q.options.map(([label], j) => <option key={label} value={j}>{label}</option>)}</select></label>)}</div>
-    <Field label="留给我的判断" value={p.retain} onChange={retain => patch({ retain })} />
-    <Field label="交给 AI 的工作" value={p.delegate} onChange={delegate => patch({ delegate })} />
-    <p className="muted">选项影响后续召回；文字备注会保留，不作自动理解。</p>
+    <div className="preference-grid">{[0, 3].map(i => { const q = scenario.questions[i]; return <label key={q.header}><span>{i === 0 ? '什么时候问我' : '最多问几次'}</span><select aria-label={q.question} value={p.answers[i]} onChange={e => { const answers = [...p.answers]; answers[i] = Number(e.target.value); patch({ answers }); }}>{q.options.map(([label], j) => <option key={label} value={j}>{label}</option>)}</select></label>; })}</div>
   </div>;
 }
 function Onboarding({ s }) {
   if (s.editingPreference) return <Card eyebrow="Dawn" title="你的参与偏好" footer={<><Button onClick={() => act('CANCEL_PROFILE')}>取消</Button><Button primary onClick={() => act('SAVE_PROFILE')}>保存偏好</Button></>}><div className="card-content"><PreferenceEditor s={s} /></div></Card>;
   return <>
     <div className="dawn-profile"><img src={copy.portrait} alt="Dawn 的黑色简笔画：抱着电脑准备上台的年轻讲师" /><div><p className="profile-name">{copy.bio}</p><h1>{copy.headline}</h1><p>{copy.situation}</p></div></div>
-    <Card eyebrow="Dawn 的这次任务" title={copy.task} className="intro-card" footer={<><span className="muted">普通工作自动推进，关键处等你判断</span><Button primary disabled={!s.prompt.trim()} onClick={() => act('START_DEMO')}>陪 Dawn 备课 <span aria-hidden="true">→</span></Button></>}>
+    <Card eyebrow="Dawn 的这次任务" title={copy.task} className="intro-card" footer={<Button primary disabled={!s.prompt.trim()} onClick={() => act('START_DEMO')}>陪 Dawn 备课 <span aria-hidden="true">→</span></Button>}>
       <div className="card-content">
         <p className="intro-promise">{copy.promise}</p>
         <TaskControls s={s} />
-        <div className="intro-edit"><details><summary>编辑偏好</summary><PreferenceEditor s={s} /></details><details><summary>查看任务要求</summary><Field label="任务要求" value={s.prompt} onChange={prompt => act('TASK_DRAFT', { prompt })} rows={4} /></details></div>
       </div>
     </Card>
   </>;
 }
 function TaskControls({ s }) {
-  return <div className="task-controls"><div className="hil-segment" role="group" aria-label="本次参与模式">{Object.entries(copy.modes).map(([value, [label]]) => <button key={value} className={`hil-segment-btn ${s.taskProfile.participationGoal === value ? 'active' : ''}`} aria-pressed={s.taskProfile.participationGoal === value} onClick={() => act('UPDATE_TASK_PROFILE', { taskProfile: { participationGoal: value } })}>{label}</button>)}</div><p className="mode-hint">{copy.modes[s.taskProfile.participationGoal]?.[1]}</p></div>;
+  return <div className="task-controls"><div className="hil-segment" role="group" aria-label="本次参与模式">{Object.entries(copy.modes).map(([value, [label, hint]]) => <button key={value} title={hint} className={`hil-segment-btn ${s.taskProfile.participationGoal === value ? 'active' : ''}`} aria-pressed={s.taskProfile.participationGoal === value} onClick={() => act('UPDATE_TASK_PROFILE', { taskProfile: { participationGoal: value } })}>{label}</button>)}</div></div>;
 }
 function Recall({ s, kind }) {
   const main = kind === 'main';
@@ -183,7 +179,7 @@ function App() {
   useEffect(() => { const onKey = e => { if (e.key === 'Escape') { setResetConfirm(false); setInfoOpen(false); } }; window.addEventListener('keydown', onKey); return () => window.removeEventListener('keydown', onKey); }, []);
   function reset() { act('RESET'); setResetKey(k => k + 1); setResetConfirm(false); setShowHistory(false); }
   return <div className={`app phase-${s.phase}`}>
-    <header className="topbar"><div className="brand"><span className="brand-symbol">↗</span><strong>Your Turn</strong><span className="brand-context">Dawn 的任务</span></div><div className="actions"><button className="demo-badge" onClick={() => setInfoOpen(true)}>情境演示 <span>ⓘ</span></button><button className="text-button" onClick={() => setResetConfirm(true)}>重新开始</button><a href={`https://github.com/your-turn-lab/your-turn-dsh/tree/${scenario.sourceBranch}`} target="_blank" rel="noreferrer">源码 ↗</a></div></header>
+    <header className="topbar"><div className="brand"><span className="brand-symbol">↗</span><strong>Your Turn</strong><span className="brand-context">Dawn 的任务</span></div><div className="actions"><button className="preference-trigger" aria-label="参与设置" title="参与设置" onClick={() => act('START_PREFERENCE_ONBOARDING')}><Icon kind="settings" /></button><button className="demo-badge" onClick={() => setInfoOpen(true)}>情境演示 <span>ⓘ</span></button><button className="text-button" onClick={() => setResetConfirm(true)}>重新开始</button><a href={`https://github.com/your-turn-lab/your-turn-dsh/tree/${scenario.sourceBranch}`} target="_blank" rel="noreferrer">源码 ↗</a></div></header>
     <aside className="session-sidebar"><span className="sidebar-caption">Dawn 的工作台</span><div className="session active-session">{copy.sidebar}<small>{s.artifacts.length ? '方案在这里，随时回来改' : '课要讲清楚，也要讲得自然'}</small></div><p className="sidebar-note">要亲自讲的课，<br />想保留自己的讲法。</p><div className="sidebar-bottom"><span className="avatar">D</span><span><strong>Dawn</strong><small>正在练习从容一点</small></span>{s.preferenceProfile && <button aria-label="编辑 Dawn 的偏好" onClick={() => act('START_PREFERENCE_ONBOARDING')} title="参与偏好"><Icon kind="settings" /></button>}</div></aside>
     <main className="workspace"><DemoProgress s={s} /><div className="conversation" ref={anchor}>
       {s.phase !== 'onboarding' && <div className="stage-label"><span className={`live-dot ${s.pendingDecision ? 'human' : ''}`} />{phaseLabels[s.phase]}{s.nodes.length > 0 && <button className="text-button" onClick={openPath}>任务路径 · {s.nodes.filter(n => n.status === 'completed').length}/6</button>}</div>}

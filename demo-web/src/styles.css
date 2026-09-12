@@ -204,6 +204,8 @@ th { font-weight: 400; color: #92929b; font-size: 12px; }
 .dawn-profile p { font-size: 14px; color: #777780; line-height: 1.85; margin: 8px 0 0; }
 .dawn-profile .profile-name { color: #8b8b94; font-size: 12px; }
 .intro-card .Mbwy4a_title { font-size: 20px; }
+.intro-card .Mbwy4a_footer { justify-content: flex-end; }
+.preference-trigger { border: 0; display: inline-grid; place-items: center; background: #f1f1f3; border-radius: 9px; width: 36px; height: 36px; color: #777780; }
 .intro-promise { margin: 0 0 20px; font-size: 15px; }
 .task-controls { margin: 5px 0 10px; }
 .task-controls .hil-segment { max-width: 470px; gap: 7px; }
