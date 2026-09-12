@@ -4,6 +4,7 @@
 import { normalizeTaskProfile } from './recall/recallBudget.js';
 import { decideRecall } from './recall/recallPolicy.js';
 import { normalizeRecallTags } from './recall/recallScorer.js';
+import { normalizePreferenceProfile } from './recall/recallPreferences.js';
 
 export const MODES = Object.freeze({ agent: 'agent', humanLeads: 'human_leads', agentCoaches: 'agent_coaches' });
 export const STATUS = Object.freeze({
@@ -53,11 +54,50 @@ export function createSessionState(sessionId, agentInfo = {}) {
     selectedNodeId: null, nodes: [], suggestions: [], interventions: [], impacts: [], planRevisions: [], outcome: null, finalAcceptedAt: null, pendingDecision: null,
     pathSync: null, runCompletion: null,
     taskProfile: normalizeTaskProfile(),
+    preferenceProfile: null,
+    preferenceOnboarding: { status: 'needed', askedAt: null, completedAt: null, source: null },
     recallState: { recallCount: 0, lastRecallAt: null, lastRecallNodeId: null },
     recallDecisions: [],
     telemetry: { agentStatus: 'idle', turn: 0, step: 0, currentTool: null, lastEvent: 'session-attached' },
     agent: { provider: agentInfo.provider, model: agentInfo.model },
   };
+}
+
+export function beginPreferenceOnboarding(previous, source = 'cold_start') {
+  const state = clone(previous);
+  if (['completed', 'skipped'].includes(state.preferenceOnboarding?.status)) return state;
+  state.preferenceOnboarding = {
+    ...(state.preferenceOnboarding ?? {}),
+    status: 'asking',
+    askedAt: new Date().toISOString(),
+    source,
+  };
+  state.revision += 1;
+  return state;
+}
+
+export function applyPreferenceProfile(previous, profile, source = 'migrated_local') {
+  const state = clone(previous);
+  state.preferenceProfile = normalizePreferenceProfile(profile);
+  state.preferenceOnboarding = {
+    ...(state.preferenceOnboarding ?? {}),
+    status: 'completed',
+    completedAt: new Date().toISOString(),
+    source,
+  };
+  state.revision += 1;
+  return state;
+}
+
+export function skipPreferenceOnboarding(previous) {
+  const state = clone(previous);
+  state.preferenceOnboarding = {
+    ...(state.preferenceOnboarding ?? {}),
+    status: 'skipped',
+    source: 'skipped',
+  };
+  state.revision += 1;
+  return state;
 }
 function recallKindFor(value, fallbackMode) {
   return ['growth', 'direction'].includes(value) ? value : fallbackMode === MODES.agentCoaches ? 'growth' : 'direction';
@@ -254,6 +294,7 @@ export function evaluateRecallForNode(previous, nodeId, options = {}) {
     candidate,
     sessionRecallState: state.recallState,
     taskProfile: state.taskProfile,
+    preferenceProfile: state.preferenceProfile,
     now: options.now,
   });
   const recallDecision = options.forceAction
@@ -534,6 +575,10 @@ export function reduceTask(previous, action) {
     case 'SELECT_NODE': findNode(state, action.nodeId); state.selectedNodeId = action.nodeId; return state;
     case 'UPDATE_TASK_PROFILE':
       return updateTaskProfile(previous, action.taskProfile);
+    case 'APPLY_PREFERENCE_PROFILE':
+      return applyPreferenceProfile(previous, action.profile, action.source);
+    case 'SKIP_PREFERENCE_ONBOARDING':
+      return skipPreferenceOnboarding(previous);
     case 'ACCEPT_SUGGESTION': {
       state.finalAcceptedAt = null;
       const suggestion = state.suggestions.find((item) => item.id === action.suggestionId);

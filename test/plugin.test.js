@@ -6,6 +6,17 @@ import { publishTaskPlan } from '../src/domain.js';
 
 function agent(id) { return { id, options: { provider: 'deepseek-official', model: 'deepseek-chat' }, session: { id, snapshotEvents: () => [] }, steerCalls: [], followupCalls: [], injected: [], steer(message) { this.steerCalls.push(message); }, followup(message) { this.followupCalls.push(message); }, inject(message) { this.injected.push(message); } }; }
 
+function preferenceAnswers() {
+  return {
+    answers: [
+      { id: 'interruption_style', selected: ['重要判断问我'] },
+      { id: 'preference_ownership', selected: ['重要选择问我'] },
+      { id: 'learning_intent', selected: ['平衡参与'] },
+      { id: 'recall_budget', selected: ['2 到 3 次'] },
+    ],
+  };
+}
+
 test('runtime returns an empty state before the Agent publishes a plan', async () => {
   const runtime = createPluginRuntime();
   const result = await runtime.handle('state', { sessionId: 'missing' });
@@ -31,6 +42,199 @@ test('unknown actions are rejected', async () => {
   const result = await runtime.handle('dispatch', { sessionId: 'x', type: 'UNSUPPORTED' });
   assert.equal(result.ok, false);
   assert.equal(result.error.code, 'invalid-action');
+});
+
+test('preference onboarding asks native questions and saves the profile', async () => {
+  const sessions = new SessionRuntimeStore();
+  const liveAgent = agent('onboarding'); sessions.attach(liveAgent);
+  let asked;
+  const runtime = createPluginRuntime(sessions, {
+    userQuestions: {
+      async ask(payload) {
+        asked = payload.questions;
+        return {
+          answers: [
+            { id: 'interruption_style', selected: ['多给我参与'] },
+            { id: 'preference_ownership', selected: ['多数选择问我'] },
+            { id: 'learning_intent', selected: ['练习判断'] },
+            { id: 'recall_budget', selected: ['有价值就问'] },
+          ],
+        };
+      },
+    },
+  });
+
+  const result = await runtime.handle('dispatch', { sessionId: 'onboarding', type: 'START_PREFERENCE_ONBOARDING' });
+
+  assert.equal(result.ok, true);
+  assert.equal(asked.length, 4);
+  assert.equal(result.value.preferenceProfile.preset, 'participatory');
+  assert.equal(result.value.preferenceOnboarding.status, 'completed');
+});
+
+test('manual preference edit can rerun onboarding after a profile exists', async () => {
+  const sessions = new SessionRuntimeStore();
+  const liveAgent = agent('edit-onboarding'); sessions.attach(liveAgent);
+  let askCount = 0;
+  const runtime = createPluginRuntime(sessions, {
+    userQuestions: {
+      async ask() {
+        askCount += 1;
+        return preferenceAnswers();
+      },
+    },
+  });
+  await runtime.handle('dispatch', { sessionId: 'edit-onboarding', type: 'APPLY_PREFERENCE_PROFILE', source: 'migrated_local', profile: { profile: { preset: 'conservative', thresholdBias: 0.1, maxRecall: 1 } } });
+
+  const result = await runtime.handle('dispatch', { sessionId: 'edit-onboarding', type: 'START_PREFERENCE_ONBOARDING' });
+
+  assert.equal(result.ok, true);
+  assert.equal(askCount, 1);
+  assert.equal(result.value.preferenceProfile.preset, 'balanced');
+  assert.equal(result.value.preferenceOnboarding.source, 'cold_start');
+});
+
+test('preference onboarding skip is kept session-local', async () => {
+  const sessions = new SessionRuntimeStore();
+  const liveAgent = agent('skip-onboarding'); sessions.attach(liveAgent);
+  const runtime = createPluginRuntime(sessions, {
+    userQuestions: {
+      async ask() {
+        return { answers: [{ id: 'interruption_style', skipped: true }] };
+      },
+    },
+  });
+
+  const result = await runtime.handle('dispatch', { sessionId: 'skip-onboarding', type: 'START_PREFERENCE_ONBOARDING' });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.value.preferenceProfile, null);
+  assert.equal(result.value.preferenceOnboarding.status, 'skipped');
+});
+
+test('local preference migration action writes current session state', async () => {
+  const sessions = new SessionRuntimeStore();
+  const liveAgent = agent('migrate-preference'); sessions.attach(liveAgent);
+  const runtime = createPluginRuntime(sessions);
+
+  const result = await runtime.handle('dispatch', {
+    sessionId: 'migrate-preference',
+    type: 'APPLY_PREFERENCE_PROFILE',
+    source: 'migrated_local',
+    profile: {
+      summary: '继续使用本地偏好',
+      profile: {
+        preset: 'conservative',
+        thresholdBias: 0.1,
+        maxRecall: 1,
+      },
+    },
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.value.preferenceProfile.preset, 'conservative');
+  assert.equal(result.value.preferenceOnboarding.source, 'migrated_local');
+});
+
+test('local preference migration asks for native confirmation before applying', async () => {
+  const sessions = new SessionRuntimeStore();
+  const liveAgent = agent('confirm-migration'); sessions.attach(liveAgent);
+  let question;
+  const runtime = createPluginRuntime(sessions, {
+    userQuestions: {
+      async ask(payload) {
+        question = payload.questions[0];
+        return { answers: [{ id: 'preference_migration', selected: ['沿用上次偏好'] }] };
+      },
+    },
+  });
+
+  const result = await runtime.handle('dispatch', {
+    sessionId: 'confirm-migration',
+    type: 'CONFIRM_PREFERENCE_MIGRATION',
+    profile: {
+      summary: '平衡参与，重要方向会问你，普通执行自动推进。',
+      profile: {
+        preset: 'balanced',
+        thresholdBias: 0,
+        maxRecall: 3,
+      },
+    },
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(question.id, 'preference_migration');
+  assert.match(question.detail, /平衡参与/);
+  assert.deepEqual(question.options.map((option) => option.label), ['沿用上次偏好', '重新选择', '本次跳过']);
+  assert.equal(result.value.preferenceProfile.preset, 'balanced');
+  assert.equal(result.value.preferenceOnboarding.source, 'migrated_local');
+});
+
+test('local preference migration can switch into full onboarding', async () => {
+  const sessions = new SessionRuntimeStore();
+  const liveAgent = agent('reselect-migration'); sessions.attach(liveAgent);
+  const asked = [];
+  const runtime = createPluginRuntime(sessions, {
+    userQuestions: {
+      async ask(payload) {
+        asked.push(payload.questions);
+        if (payload.questions[0].id === 'preference_migration') return { answers: [{ id: 'preference_migration', selected: ['重新选择'] }] };
+        return preferenceAnswers();
+      },
+    },
+  });
+
+  const result = await runtime.handle('dispatch', {
+    sessionId: 'reselect-migration',
+    type: 'CONFIRM_PREFERENCE_MIGRATION',
+    profile: { profile: { preset: 'conservative', thresholdBias: 0.1, maxRecall: 1 } },
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(asked.length, 2);
+  assert.equal(asked[1].length, 4);
+  assert.equal(result.value.preferenceProfile.preset, 'balanced');
+  assert.equal(result.value.preferenceOnboarding.source, 'cold_start');
+});
+
+test('direct task waits while local preference migration confirmation is open', async () => {
+  const listeners = new Map();
+  let rpcHandler;
+  let resolveAsk;
+  const liveAgent = agent('blocked-migration');
+  const ctx = {
+    tools: { register() {} },
+    systemPrompt: { section() {} },
+    userQuestions: {
+      async ask() {
+        return new Promise((resolve) => { resolveAsk = resolve; });
+      },
+    },
+    agents: { list: () => [liveAgent], get: (id) => id === liveAgent.id ? liveAgent : undefined },
+    connection: { rpc: { handle(_path, handler) { rpcHandler = handler; } } },
+    on(name, handler) { listeners.set(name, handler); },
+  };
+  apply(ctx);
+  const migration = rpcHandler('dispatch', {
+    sessionId: liveAgent.id,
+    type: 'CONFIRM_PREFERENCE_MIGRATION',
+    profile: { summary: '平衡参与，重要方向会问你，普通执行自动推进。', profile: { preset: 'balanced', thresholdBias: 0, maxRecall: 3 } },
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  let settled = false;
+  const preStep = listeners.get('agent/pre-step')({
+    agent: liveAgent, turn: 1, step: 1, signal: new AbortController().signal,
+    messages: [{ source: { kind: 'user' }, content: [{ type: 'text', text: '开始任务' }] }],
+  }, async () => ({ kind: 'enter', messages: [] })).then((value) => { settled = true; return value; });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(settled, false);
+  resolveAsk({ answers: [{ id: 'preference_migration', selected: ['沿用上次偏好'] }] });
+  const decision = await preStep;
+  const migrated = await migration;
+
+  assert.equal(migrated.ok, true);
+  assert.equal(settled, true);
+  assert.match(decision.messages[0].content[0].text, /Every task requires a path/);
 });
 
 test('user can request reconciliation after a completed turn left stale nodes', async () => {
@@ -71,6 +275,37 @@ test('turn-stopping requests at most one automatic reconciliation per turn', asy
   assert.equal(liveAgent.injected.length, 1);
 });
 
+test('first direct task waits for preference onboarding before planning can continue', async () => {
+  const listeners = new Map();
+  let rpcHandler;
+  let asked = false;
+  const liveAgent = agent('first-task-preference');
+  const ctx = {
+    tools: { register() {} },
+    systemPrompt: { section() {} },
+    userQuestions: {
+      async ask() {
+        asked = true;
+        return preferenceAnswers();
+      },
+    },
+    agents: { list: () => [liveAgent], get: (id) => id === liveAgent.id ? liveAgent : undefined },
+    connection: { rpc: { handle(_path, handler) { rpcHandler = handler; } } },
+    on(name, handler) { listeners.set(name, handler); },
+  };
+  apply(ctx);
+
+  const decision = await listeners.get('agent/pre-step')({
+    agent: liveAgent, turn: 1, step: 1, signal: new AbortController().signal,
+    messages: [{ source: { kind: 'user' }, content: [{ type: 'text', text: '开始一个新任务' }] }],
+  }, async () => ({ kind: 'enter', messages: [] }));
+  const snapshot = await rpcHandler('state', { sessionId: liveAgent.id });
+
+  assert.equal(asked, true);
+  assert.equal(snapshot.value.preferenceOnboarding.status, 'completed');
+  assert.match(decision.messages[0].content[0].text, /Every task requires a path/);
+});
+
 test('every direct user task requires a path regardless of seniority wording', async () => {
   const listeners = new Map();
   const senior = agent('senior');
@@ -79,7 +314,7 @@ test('every direct user task requires a path regardless of seniority wording', a
   const ctx = {
     tools: { register() {} },
     systemPrompt: { section() {} },
-    userQuestions: { async ask() { throw new Error('not used'); } },
+    userQuestions: { async ask() { return preferenceAnswers(); } },
     agents: { list: () => [...agents.values()], get: (id) => agents.get(id) },
     connection: { rpc: { handle() {} } },
     on(name, handler) { listeners.set(name, handler); },
@@ -108,7 +343,7 @@ test('a simple task may use one node but cannot omit the path', async () => {
   const listeners = new Map();
   const liveAgent = agent('simple');
   const ctx = {
-    tools: { register() {} }, systemPrompt: { section() {} }, userQuestions: {},
+    tools: { register() {} }, systemPrompt: { section() {} }, userQuestions: { async ask() { return preferenceAnswers(); } },
     agents: { list: () => [liveAgent], get: () => liveAgent }, connection: { rpc: { handle() {} } },
     on(name, handler) { listeners.set(name, handler); },
   };

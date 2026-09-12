@@ -1,3 +1,5 @@
+import { scoringConfigFromPreference } from './recallPreferences.js';
+
 export const RECALL_TAGS = Object.freeze({
   preferenceDependent: 'preference_dependent',
   downstreamImpact: 'downstream_impact',
@@ -20,7 +22,8 @@ export function normalizeRecallTags(tags = []) {
   return normalized;
 }
 
-export function scoreRecallCandidate(candidate = {}) {
+export function scoreRecallCandidate(candidate = {}, scoringConfig) {
+  const config = scoringConfig ?? scoringConfigFromPreference();
   const tags = new Set(normalizeRecallTags(candidate.tags));
 
   const preferenceRisk = tags.has(RECALL_TAGS.preferenceDependent) ? 1 : 0;
@@ -31,9 +34,13 @@ export function scoreRecallCandidate(candidate = {}) {
   const learningValue = tags.has(RECALL_TAGS.learningValue) ? 1 : 0;
   const ownershipValue = tags.has(RECALL_TAGS.ownershipValue) ? 1 : 0;
 
-  const autoRisk = (0.4 * preferenceRisk) + (0.3 * downstreamImpact) + (0.3 * irreversibility);
-  const humanValue = (0.5 * coreJudgment) + (0.3 * learningValue) + (0.2 * ownershipValue);
-  const recallValue = (0.45 * autoRisk) + (0.55 * humanValue);
+  const autoRisk = (config.autoRiskWeights.preferenceRisk * preferenceRisk)
+    + (config.autoRiskWeights.downstreamImpact * downstreamImpact)
+    + (config.autoRiskWeights.irreversibility * irreversibility);
+  const humanValue = (config.humanValueWeights.coreJudgment * coreJudgment)
+    + (config.humanValueWeights.learningValue * learningValue)
+    + (config.humanValueWeights.ownershipValue * ownershipValue);
+  const recallValue = (config.blendWeights.autoRisk * autoRisk) + (config.blendWeights.humanValue * humanValue);
 
   return {
     autoRisk,

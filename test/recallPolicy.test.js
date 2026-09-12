@@ -111,3 +111,43 @@ test('non-critical recall stops after the shared budget is exhausted', () => {
   assert.equal(result.action, 'AUTO');
   assert.equal(result.reason, 'recall_budget_exhausted');
 });
+
+test('the same learning candidate can recall under participatory preference', () => {
+  const candidate = {
+    question: '你想先判断这个证据说明什么吗？',
+    tags: ['learning_value'],
+    isCritical: false,
+  };
+  const baseline = decideRecall({
+    candidate,
+    taskProfile: {
+      taskSize: 'medium',
+      participationGoal: 'balanced',
+    },
+    sessionRecallState: {
+      recallCount: 0,
+    },
+  });
+  const participatory = decideRecall({
+    candidate,
+    preferenceProfile: {
+      preset: 'participatory',
+      thresholdBias: -0.2,
+      maxRecall: 4,
+      recentPenalty: 0.1,
+      autoRiskWeights: { preferenceRisk: 0.35, downstreamImpact: 0.3, irreversibility: 0.35 },
+      humanValueWeights: { coreJudgment: 0.3, learningValue: 0.7, ownershipValue: 0 },
+      blendWeights: { autoRisk: 0.25, humanValue: 0.75 },
+    },
+    taskProfile: {
+      taskSize: 'medium',
+      participationGoal: 'balanced',
+    },
+    sessionRecallState: {
+      recallCount: 0,
+    },
+  });
+
+  assert.equal(baseline.action, 'AUTO');
+  assert.equal(participatory.action, 'RECALL');
+});

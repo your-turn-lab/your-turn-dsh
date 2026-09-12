@@ -1,5 +1,6 @@
 import { registerAgentTools, interventionMessage } from './agent-tools.js';
-import { applyTurnEnd, beginNativeQuestion, createSessionState, endNativeQuestion, publicState, reduceTask } from './domain.js';
+import { applyTurnEnd, beginNativeQuestion, beginPreferenceOnboarding, createSessionState, endNativeQuestion, publicState, reduceTask, skipPreferenceOnboarding, applyPreferenceProfile } from './domain.js';
+import { PREFERENCE_ONBOARDING_QUESTIONS, profileFromOnboardingAnswers } from './recall/recallPreferences.js';
 import { SessionRuntimeStore } from './session-runtime.js';
 import { createUserMessage } from '@deepseek-ai/dsh-llm';
 
@@ -16,6 +17,11 @@ const allowedActions = new Set([
   'ACCEPT_FINAL_RESULT',
   'REQUEST_PATH_SYNC',
   'UPDATE_TASK_PROFILE',
+  'START_PREFERENCE_ONBOARDING',
+  'CONFIRM_PREFERENCE_MIGRATION',
+  'COMPLETE_PREFERENCE_ONBOARDING',
+  'SKIP_PREFERENCE_ONBOARDING',
+  'APPLY_PREFERENCE_PROFILE',
 ]);
 
 function ok(value) { return { ok: true, value }; }
@@ -27,7 +33,18 @@ function questionAnswerFromEvent(event) {
   try { return JSON.parse(text); } catch { return undefined; }
 }
 
-export function createPluginRuntime(liveSessions = new SessionRuntimeStore()) {
+function onboardingWasSkipped(result) {
+  return Array.isArray(result?.answers) && result.answers.some((answer) => answer?.skipped);
+}
+
+function selectedLabel(result) {
+  return String(result?.answers?.[0]?.selected?.[0] || '').replace(/\s*\(Recommended\)\s*$/u, '').trim();
+}
+
+export function createPluginRuntime(liveSessions = new SessionRuntimeStore(), options = {}) {
+  const userQuestions = options.userQuestions;
+  const preferenceQuestions = new Map();
+
   async function snapshot(sessionId) {
     const live = sessionId ? liveSessions.get(sessionId) : undefined;
     const state = live?.state ?? createSessionState(sessionId || 'no-session');
@@ -36,6 +53,79 @@ export function createPluginRuntime(liveSessions = new SessionRuntimeStore()) {
       label: live ? `LIVE AGENT · ${state.agent.provider ?? 'DSH'}/${state.agent.model ?? 'current model'}` : '等待选择 DSH 会话',
       ready: Boolean(live?.agent),
     });
+  }
+
+  async function askPreferenceQuestions(record, { force = false, source = 'cold_start', signal } = {}) {
+    const id = String(record.agent.id);
+    if (!force && ['completed', 'skipped'].includes(record.state.preferenceOnboarding?.status)) return record.state;
+    if (preferenceQuestions.has(id)) return preferenceQuestions.get(id);
+    if (!userQuestions?.ask) throw new Error('DSH question cards are not available.');
+    const task = (async () => {
+      record.state = beginPreferenceOnboarding(record.state, source);
+      try {
+        const result = await userQuestions.ask({
+          agent: record.agent,
+          signal,
+          questions: PREFERENCE_ONBOARDING_QUESTIONS,
+        });
+        record.state = onboardingWasSkipped(result)
+          ? skipPreferenceOnboarding(record.state)
+          : applyPreferenceProfile(record.state, profileFromOnboardingAnswers(result), 'cold_start');
+        return record.state;
+      } catch (error) {
+        record.state = skipPreferenceOnboarding(record.state);
+        throw error;
+      } finally {
+        preferenceQuestions.delete(id);
+      }
+    })();
+    preferenceQuestions.set(id, task);
+    return task;
+  }
+
+  async function confirmPreferenceMigration(record, localProfile, { signal } = {}) {
+    const id = String(record.agent.id);
+    if (record.state.preferenceProfile || ['completed', 'skipped'].includes(record.state.preferenceOnboarding?.status)) return record.state;
+    if (preferenceQuestions.has(id)) return preferenceQuestions.get(id);
+    if (!userQuestions?.ask) throw new Error('DSH question cards are not available.');
+    const summary = String(localProfile?.summary || localProfile?.profile?.summary || '平衡参与，重要方向会问你，普通执行自动推进。').trim();
+    const task = (async () => {
+      record.state = beginPreferenceOnboarding(record.state, 'migrated_local');
+      try {
+        const result = await userQuestions.ask({
+          agent: record.agent,
+          signal,
+          questions: [{
+            id: 'preference_migration',
+            header: 'Your Turn 偏好',
+            question: '检测到你之前设置过 Your Turn 偏好，这次怎么处理？',
+            detail: `上次偏好：${summary}`,
+            options: [
+              { label: '沿用上次偏好', description: '本次任务继续使用这套 Your Turn 打断偏好。' },
+              { label: '重新选择', description: '重新回答 4 个问题，更新偏好。' },
+              { label: '本次跳过', description: '这次任务先不使用历史偏好。' },
+            ],
+          }],
+        });
+        const choice = selectedLabel(result);
+        if (onboardingWasSkipped(result) || choice === '本次跳过') {
+          record.state = skipPreferenceOnboarding(record.state);
+        } else if (choice === '重新选择') {
+          preferenceQuestions.delete(id);
+          return askPreferenceQuestions(record, { force: true, source: 'cold_start', signal });
+        } else {
+          record.state = applyPreferenceProfile(record.state, localProfile, 'migrated_local');
+        }
+        return record.state;
+      } catch (error) {
+        record.state = skipPreferenceOnboarding(record.state);
+        throw error;
+      } finally {
+        if (preferenceQuestions.get(id) === task) preferenceQuestions.delete(id);
+      }
+    })();
+    preferenceQuestions.set(id, task);
+    return task;
   }
 
   async function handle(endpoint, payload) {
@@ -48,6 +138,26 @@ export function createPluginRuntime(liveSessions = new SessionRuntimeStore()) {
       }
       if (!sessionId || !liveSessions.get(sessionId)) return fail('session-not-found', 'No live DSH Agent is attached to this session.');
       const record = liveSessions.require(sessionId);
+      if (payload.type === 'START_PREFERENCE_ONBOARDING') {
+        try {
+          await askPreferenceQuestions(record, { force: true, signal: payload.signal });
+          return ok(await snapshot(sessionId));
+        } catch (error) {
+          return fail('question-cancelled', error instanceof Error ? error.message : String(error));
+        }
+      }
+      if (payload.type === 'CONFIRM_PREFERENCE_MIGRATION') {
+        try {
+          await confirmPreferenceMigration(record, payload.profile, { signal: payload.signal });
+          return ok(await snapshot(sessionId));
+        } catch (error) {
+          return fail('question-cancelled', error instanceof Error ? error.message : String(error));
+        }
+      }
+      if (payload.type === 'COMPLETE_PREFERENCE_ONBOARDING') {
+        record.state = applyPreferenceProfile(record.state, profileFromOnboardingAnswers(payload.answer), 'cold_start');
+        return ok(await snapshot(sessionId));
+      }
       if (payload.type === 'REQUEST_PATH_SYNC') {
         const unfinished = record.state.nodes.filter((node) => !['completed', 'skipped'].includes(node.status));
         if (unfinished.length === 0 && record.state.nodes.length > 0) return ok(await snapshot(sessionId));
@@ -84,24 +194,30 @@ export function createPluginRuntime(liveSessions = new SessionRuntimeStore()) {
     }
   }
 
-  return { handle, liveSessions };
+  return { handle, liveSessions, askPreferenceQuestions, confirmPreferenceMigration };
 }
 
 export function apply(ctx) {
   const liveSessions = new SessionRuntimeStore();
-  const runtime = createPluginRuntime(liveSessions);
+  const runtime = createPluginRuntime(liveSessions, { userQuestions: ctx.userQuestions });
   registerAgentTools(ctx, liveSessions);
 
   for (const agent of ctx.agents.list()) liveSessions.attach(agent);
   ctx.on('agent/created', ({ agent }) => liveSessions.attach(agent));
   ctx.on('agent/disposed', ({ agent }) => liveSessions.detach(agent));
-  ctx.on('agent/pre-step', async ({ agent, messages, turn }, next) => {
+  ctx.on('agent/pre-step', async ({ agent, messages, turn, signal }, next) => {
     const decision = await next();
     if (decision.kind === 'reject') return decision;
     const record = liveSessions.get(String(agent.id)) ?? liveSessions.attach(agent);
     const directPrompt = messages.some((message) => message.source?.kind === 'user');
     const priorPathComplete = record.state.nodes.length > 0 && record.state.nodes.every((node) => ['completed', 'skipped'].includes(node.status));
     if (!directPrompt || (record.state.nodes.length > 0 && !priorPathComplete)) return decision;
+    if (record.state.preferenceOnboarding?.status === 'asking') {
+      await runtime.askPreferenceQuestions(record, { signal });
+    }
+    if (!record.state.preferenceProfile && record.state.preferenceOnboarding?.status === 'needed') {
+      await runtime.askPreferenceQuestions(record, { signal });
+    }
     const planningNotice = createUserMessage({
       content: [{ type: 'text', text: '[Visible path required] Before any research, execution, or final answer for this user request, your first tool action must be publish_task_plan. Every task requires a path; a simple task may use one concise node. User identity affects growth recall only, never whether the path exists.' }],
       source: { kind: 'plugin', plugin: name, form: 'notice', summary: 'Publish the visible path first' },
@@ -116,6 +232,7 @@ export function apply(ctx) {
   ctx.on('tools/pre-execute', async (exec, next) => {
     if (!exec.agent) return next();
     const record = liveSessions.get(String(exec.agent.id)) ?? liveSessions.attach(exec.agent);
+    if (record.state.preferenceOnboarding?.status === 'asking') await runtime.askPreferenceQuestions(record);
     const requiredTurn = record.state.telemetry?.pathRequiredTurn;
     if (requiredTurn && record.state.telemetry?.pathPublishedTurn !== requiredTurn && exec.name !== 'publish_task_plan') {
       return { kind: 'deny', reason: 'Publish the visible task path first with publish_task_plan. Every task requires a path; use one concise node for a simple task.' };

@@ -37,3 +37,18 @@ test('critical candidate contributes irreversibility risk', () => {
   assert.equal(result.autoRisk, 0.3);
   assert.equal(result.recallValue, 0.135);
 });
+
+test('preference scoring config can change the same candidate value', () => {
+  const candidate = {
+    tags: ['learning_value'],
+    isCritical: false,
+  };
+  const baseline = scoreRecallCandidate(candidate);
+  const participatory = scoreRecallCandidate(candidate, {
+    autoRiskWeights: { preferenceRisk: 0.35, downstreamImpact: 0.3, irreversibility: 0.35 },
+    humanValueWeights: { coreJudgment: 0.4, learningValue: 0.45, ownershipValue: 0.15 },
+    blendWeights: { autoRisk: 0.35, humanValue: 0.65 },
+  });
+
+  assert.ok(participatory.recallValue > baseline.recallValue);
+});

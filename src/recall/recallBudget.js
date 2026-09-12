@@ -1,3 +1,5 @@
+import { budgetConfigFromPreference } from './recallPreferences.js';
+
 export const TASK_SIZES = Object.freeze({
   short: 'short',
   medium: 'medium',
@@ -56,19 +58,22 @@ export function getRecallBudgetConfig(taskProfile = {}) {
 export function calculateDynamicThreshold({
   sessionRecallState = {},
   taskProfile = {},
+  preferenceProfile,
   now = Date.now(),
 } = {}) {
   const config = getRecallBudgetConfig(taskProfile);
+  const preference = budgetConfigFromPreference(preferenceProfile);
 
-  let threshold = config.baseThreshold + config.goalPenalty;
+  let threshold = config.baseThreshold + config.goalPenalty + (preference.thresholdBias ?? 0);
   const recallCount = sessionRecallState.recallCount || 0;
+  const maxRecall = preference.maxRecall ?? config.maxRecall;
 
-  const budgetPenalty = recallCount >= config.maxRecall ? 1 : 0;
+  const budgetPenalty = recallCount >= maxRecall ? 1 : 0;
   threshold += budgetPenalty;
 
   const lastRecallAt = sessionRecallState.lastRecallAt;
   const hasRecentRecall = Boolean(lastRecallAt && now - lastRecallAt < 2 * 60 * 1000);
-  const recentPenalty = hasRecentRecall ? 0.15 : 0;
+  const recentPenalty = hasRecentRecall ? (preference.recentPenalty ?? 0.15) : 0;
   threshold += recentPenalty;
 
   threshold = Math.max(0, Math.min(1, threshold));
@@ -76,8 +81,10 @@ export function calculateDynamicThreshold({
   return {
     threshold,
     baseThreshold: config.baseThreshold,
-    maxRecall: config.maxRecall,
+    maxRecall,
     goalPenalty: config.goalPenalty,
+    thresholdBias: preference.thresholdBias ?? 0,
+    preferencePreset: preference.preset,
     recallCount,
     recentPenalty,
     budgetPenalty,

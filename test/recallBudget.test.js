@@ -94,3 +94,50 @@ test('budget cap raises the threshold to one after three recalls', () => {
   assert.equal(result.threshold, 1);
   assert.equal(result.maxRecall, 3);
 });
+
+test('conservative preference raises threshold and caps recall at one', () => {
+  const result = calculateDynamicThreshold({
+    taskProfile: {
+      taskSize: 'medium',
+      participationGoal: 'balanced',
+    },
+    preferenceProfile: {
+      preset: 'conservative',
+      thresholdBias: 0.1,
+      maxRecall: 1,
+      recentPenalty: 0.25,
+    },
+    sessionRecallState: {
+      recallCount: 1,
+    },
+  });
+
+  assert.equal(result.maxRecall, 1);
+  assert.equal(result.budgetPenalty, 1);
+  assert.equal(result.threshold, 1);
+});
+
+test('participatory preference lowers threshold and recent penalty', () => {
+  const now = Date.now();
+  const result = calculateDynamicThreshold({
+    taskProfile: {
+      taskSize: 'medium',
+      participationGoal: 'balanced',
+    },
+    preferenceProfile: {
+      preset: 'participatory',
+      thresholdBias: -0.08,
+      maxRecall: 4,
+      recentPenalty: 0.1,
+    },
+    sessionRecallState: {
+      recallCount: 1,
+      lastRecallAt: now - 30 * 1000,
+    },
+    now,
+  });
+
+  assert.equal(result.maxRecall, 4);
+  assert.equal(result.recentPenalty, 0.1);
+  assert.equal(result.threshold, 0.52);
+});

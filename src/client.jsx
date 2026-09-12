@@ -39,8 +39,29 @@ function taskLifecycle(state, nativeQuestionVisible = false) {
 
 const DECISION_CARD_HEADERS = new Set(['Your Turn', '值得你亲自判断', '需要你拿定方向', '需要你回来']);
 const POSITION_KEYS = { launcher: 'human-loop-launcher-position', rail: 'human-loop-rail-position', railHeight: 'human-loop-rail-height' };
+const PREFERENCE_KEY = 'your-turn-dsh:preference-profile:v1';
 const VIEWPORT_GAP = 8;
 const MIN_RAIL_HEIGHT = 280;
+
+function readPreferenceProfile() {
+  try {
+    const value = JSON.parse(localStorage.getItem(PREFERENCE_KEY));
+    return value && typeof value === 'object' ? value : null;
+  } catch { return null; }
+}
+
+function savePreferenceProfile(profile) {
+  if (!profile || typeof profile !== 'object') return null;
+  const value = profile.profile ? profile : {
+    version: 1,
+    updatedAt: new Date().toISOString(),
+    summary: profile.summary || '平衡参与：重要方向会问你，普通执行自动推进',
+    answers: profile.answers,
+    profile,
+  };
+  try { localStorage.setItem(PREFERENCE_KEY, JSON.stringify(value)); } catch { /* Preference memory is optional. */ }
+  return value;
+}
 
 function readPosition(key) {
   try {
@@ -187,7 +208,12 @@ function RecallPolicyDebug({ state, node }) {
     critical_override: 'critical override',
     user_initiated: 'user initiated',
   }[decision.reason] ?? decision.reason ?? '—';
-  return <div className={`hil-card hil-debug ${auto ? 'auto' : 'recall'}`}><strong>{auto ? 'AI 自动继续' : 'Recall Policy'}</strong>{auto && <p className="hil-copy">这一步评估过是否需要 Your Turn，但当前打扰价值不够高，所以没有暂停。</p>}<div className="hil-debug-grid"><span>Recall Value</span><b>{formatScore(decision.recallValue)}</b><span>Threshold</span><b>{formatScore(decision.threshold ?? budget?.threshold)}</b><span>Decision</span><b>{auto ? 'Skipped Your Turn' : decision.action ?? '—'}</b><span>Reason</span><b>{reason}</b><span>Auto Risk</span><b>{formatScore(decision.autoRisk)}</b><span>Human Value</span><b>{formatScore(decision.humanValue)}</b><span>Task Size</span><b>{TASK_SIZE_LABEL[budget?.taskSize ?? profile.taskSize] ?? '中等任务'}</b><span>Goal</span><b>{PARTICIPATION_GOAL_LABEL[budget?.participationGoal ?? profile.participationGoal] ?? '平衡模式'}</b><span>Recall Count</span><b>{budget ? `${budget.recallCount} / ${budget.maxRecall}` : `${state.recallState?.recallCount ?? 0} / —`}</b></div></div>;
+  return <div className={`hil-card hil-debug ${auto ? 'auto' : 'recall'}`}><strong>{auto ? 'AI 自动继续' : 'Recall Policy'}</strong>{auto && <p className="hil-copy">这一步评估过是否需要 Your Turn，但当前打扰价值不够高，所以没有暂停。</p>}<div className="hil-debug-grid"><span>Recall Value</span><b>{formatScore(decision.recallValue)}</b><span>Threshold</span><b>{formatScore(decision.threshold ?? budget?.threshold)}</b><span>Decision</span><b>{auto ? 'Skipped Your Turn' : decision.action ?? '—'}</b><span>Reason</span><b>{reason}</b><span>Auto Risk</span><b>{formatScore(decision.autoRisk)}</b><span>Human Value</span><b>{formatScore(decision.humanValue)}</b><span>Task Size</span><b>{TASK_SIZE_LABEL[budget?.taskSize ?? profile.taskSize] ?? '中等任务'}</b><span>Goal</span><b>{PARTICIPATION_GOAL_LABEL[budget?.participationGoal ?? profile.participationGoal] ?? '平衡模式'}</b>{budget?.preferencePreset && <><span>Preference</span><b>{budget.preferencePreset}</b></>}<span>Recall Count</span><b>{budget ? `${budget.recallCount} / ${budget.maxRecall}` : `${state.recallState?.recallCount ?? 0} / —`}</b></div></div>;
+}
+
+function PreferenceProfileControls({ profile, busy, onEdit }) {
+  const summary = profile?.summary || '默认 Your Turn 偏好';
+  return <div className="hil-card hil-profile"><div className="hil-label">Your Turn 偏好</div><p className="hil-copy">{summary}</p><button className="hil-btn" disabled={busy} onClick={onEdit}>编辑偏好</button></div>;
 }
 
 function MoreInfo({ node, hovered, suggestion, draft, setDraft, onEdit }) {
@@ -210,6 +236,7 @@ function substepResultLabel(node, substep, visualStatus) {
 function HumanLoopOverlay({ call }) {
   const [open, setOpen] = useState(false);
   const [state, setState] = useState(null);
+  const [localPreference, setLocalPreference] = useState(() => readPreferenceProfile());
   const [error, setError] = useState('');
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
@@ -226,6 +253,8 @@ function HumanLoopOverlay({ call }) {
   const railRef = useRef(null);
   const drawerRef = useRef(null);
   const suppressClickRef = useRef(false);
+  const migratingPreferenceRef = useRef(false);
+  const savedPreferenceRef = useRef('');
   const nodeRefs = useRef(new Map());
   const [drawerTop, setDrawerTop] = useState(18);
   const [launcherPosition, setLauncherPosition] = useState(() => readPosition(POSITION_KEYS.launcher));
@@ -249,6 +278,19 @@ function HumanLoopOverlay({ call }) {
     const timer = setInterval(load, 1200);
     return () => { alive = false; clearInterval(timer); };
   }, [call]);
+  useEffect(() => { if (open) setLocalPreference(readPreferenceProfile()); }, [open]);
+  useEffect(() => {
+    if (!state?.preferenceProfile) return;
+    const key = JSON.stringify(state.preferenceProfile);
+    if (savedPreferenceRef.current === key) return;
+    savedPreferenceRef.current = key;
+    setLocalPreference(savePreferenceProfile(state.preferenceProfile));
+  }, [state?.preferenceProfile]);
+  useEffect(() => {
+    if (!state || state.preferenceProfile || state.preferenceOnboarding?.status !== 'needed' || !localPreference || migratingPreferenceRef.current) return;
+    migratingPreferenceRef.current = true;
+    dispatch({ type: 'CONFIRM_PREFERENCE_MIGRATION', profile: localPreference }).finally(() => { migratingPreferenceRef.current = false; });
+  }, [state?.id, state?.preferenceProfile, state?.preferenceOnboarding?.status, localPreference]);
   useEffect(() => { if (detailNode) setDraft(detailNode.instruction); }, [detailNode?.id]);
   useEffect(() => {
     const update = () => setNativeQuestionVisible(visibleQuestionCard());
@@ -314,7 +356,14 @@ function HumanLoopOverlay({ call }) {
 
   async function dispatch(action) {
     setBusy(true); setError('');
-    try { const next = await unwrap(call, 'dispatch', action); setState(next); return next; } catch (err) { setError(err.message); } finally { setBusy(false); }
+    try {
+      const next = await unwrap(call, 'dispatch', action);
+      setState(next);
+      if (['START_PREFERENCE_ONBOARDING', 'CONFIRM_PREFERENCE_MIGRATION', 'COMPLETE_PREFERENCE_ONBOARDING', 'APPLY_PREFERENCE_PROFILE'].includes(action.type) && next?.preferenceProfile) {
+        setLocalPreference(savePreferenceProfile(next.preferenceProfile));
+      }
+      return next;
+    } catch (err) { setError(err.message); } finally { setBusy(false); }
   }
   function alignDrawer(element) { if (element) setDrawerTop(Math.round(element.getBoundingClientRect().top)); }
   function startDrag(kind, event) {
@@ -425,6 +474,9 @@ function HumanLoopOverlay({ call }) {
   function updateTaskProfile(taskProfile) {
     return dispatch({ type: 'UPDATE_TASK_PROFILE', taskProfile });
   }
+  function startPreferenceOnboarding() {
+    return dispatch({ type: 'START_PREFERENCE_ONBOARDING' });
+  }
   if (!state) return <div className="hil-root"><button className="hil-launcher" onClick={() => setOpen(!open)}><span className="hil-state-dot"/>正在连接</button>{open && <div className="hil-rail hil-loading">正在连接 DSH 插件… {error}</div>}</div>;
   const lifecycle = taskLifecycle(state, nativeQuestionVisible);
   return <div className={`hil-root ${nativeQuestionVisible ? 'native-question' : ''}`}>
@@ -451,6 +503,7 @@ function HumanLoopOverlay({ call }) {
           {!hovered && summaryOpen ? <Outcome state={state} busy={busy} onAccept={() => dispatch({ type: 'ACCEPT_FINAL_RESULT' })}/> : !detailNode ? <div className="hil-card"><strong>等待 Agent 发布路径</strong></div> : <>
             <span className="hil-mode">{STATUS_LABEL[detailNode.status]}</span><h2 className="hil-h2">{detailNode.title}</h2><div className="hil-goal">{detailNode.objective}</div>
             {!hovered && <TaskProfileControls profile={state.taskProfile} busy={busy} onChange={updateTaskProfile}/>}
+            {!hovered && <PreferenceProfileControls profile={state.preferenceProfile} busy={busy} onEdit={startPreferenceOnboarding}/>}
             {!hovered && <RecallPolicyDebug state={state} node={detailNode}/>}
             <div className="hil-process">{detailNode.substeps.map((substep) => { const visualStatus = substepVisualStatus(detailNode, substep); const key = `${detailNode.id}:${substep.id}`; const expanded = openSubstepId === key; return <div key={substep.id} className={`hil-substep ${visualStatus} ${expanded ? 'open' : ''}`} tabIndex={0} onMouseEnter={() => showSubstep(detailNode, substep)} onMouseLeave={hideSubstep} onFocus={(event) => { if (event.target === event.currentTarget) showSubstep(detailNode, substep); }} onBlur={hideSubstep}><span className="hil-substep-mark"/><span><div className="hil-substep-title">{substep.title}</div><div className="hil-substep-result" title={substep.result || undefined}>{substepResultLabel(detailNode, substep, visualStatus)}</div></span>{expanded && <div className="hil-substep-editor" onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}><textarea className="hil-textarea" aria-label="修改这一步的做法" value={substepDraft} onChange={(event) => setSubstepDraft(event.target.value)}/><button className="hil-rerun-button" type="button" aria-label="保存并从这里重做" disabled={busy || !substepDraft.trim()} onClick={() => reviseSubstep(detailNode, substep)}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4v6h6"/><path d="M5.5 15a8 8 0 1 0 1.7-8.4L4 10"/></svg></button></div>}</div>; })}</div>
             {suggestion && <div className="hil-card hil-suggest"><strong>建议你参与这一步</strong><ul className="hil-list">{suggestion.reasons.map((reason) => <li key={reason.code}>{reason.label}</li>)}</ul>{hovered ? <p className="hil-preview-hint">点击节点固定后可选择参与方式</p> : state.runMode === 'agent' && state.pendingDecision ? <p className="hil-copy">当前 Agent 已打开原生决策卡，回答后会原地继续。</p> : <div className="hil-buttons"><button className="hil-btn" onClick={() => dispatch({ type: 'ACCEPT_SUGGESTION', suggestionId: suggestion.id, mode: 'agent' })}>AI完成</button><button className="hil-btn" onClick={() => dispatch({ type: 'ACCEPT_SUGGESTION', suggestionId: suggestion.id, mode: 'human_leads' })}>主动介入</button><button className="hil-btn primary" onClick={() => dispatch({ type: 'ACCEPT_SUGGESTION', suggestionId: suggestion.id, mode: suggestion.recallKind === 'direction' ? 'human_leads' : 'agent_coaches', recallKind: suggestion.recallKind || 'growth' })}>{suggestion.recallKind === 'direction' ? '结果型召回' : '成长型召回'}</button></div>}</div>}

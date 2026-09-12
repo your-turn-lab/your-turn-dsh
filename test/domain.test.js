@@ -12,6 +12,8 @@ test('a live task starts empty and accepts a model-published path', () => {
   const empty = createSessionState('session-a');
   assert.equal(empty.nodes.length, 0);
   assert.deepEqual(empty.taskProfile, { taskSize: 'medium', participationGoal: 'balanced' });
+  assert.equal(empty.preferenceProfile, null);
+  assert.equal(empty.preferenceOnboarding.status, 'needed');
   const state = publishTaskPlan(empty, {
     ...plan,
     nodes: plan.nodes.map((node, index) => index === 1
@@ -21,6 +23,35 @@ test('a live task starts empty and accepts a model-published path', () => {
   assert.equal(state.nodes.length, 3);
   assert.equal(state.nodes[0].status, STATUS.inProgress);
   assert.deepEqual(state.nodes[1].recallTags, ['core_judgment', 'learning_value']);
+});
+
+test('preference profile can be migrated into the current session', () => {
+  const state = reduceTask(createSessionState('preference'), {
+    type: 'APPLY_PREFERENCE_PROFILE',
+    source: 'migrated_local',
+    profile: {
+      summary: '平衡参与：重要方向会问你',
+      profile: {
+        preset: 'balanced',
+        thresholdBias: 0,
+        maxRecall: 3,
+      },
+    },
+  });
+
+  assert.equal(state.preferenceProfile.preset, 'balanced');
+  assert.equal(state.preferenceOnboarding.status, 'completed');
+  assert.equal(state.preferenceOnboarding.source, 'migrated_local');
+});
+
+test('skipping preference onboarding suppresses it for this session', () => {
+  const state = reduceTask(createSessionState('skip-preference'), {
+    type: 'SKIP_PREFERENCE_ONBOARDING',
+  });
+
+  assert.equal(state.preferenceProfile, null);
+  assert.equal(state.preferenceOnboarding.status, 'skipped');
+  assert.equal(state.preferenceOnboarding.source, 'skipped');
 });
 
 test('task profile can be updated for dynamic recall budgets', () => {

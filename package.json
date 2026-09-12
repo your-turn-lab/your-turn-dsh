@@ -29,7 +29,7 @@
     "dev:link": "pnpm exec dsh plugin --profile web link .",
     "dev": "pnpm run build:client && pnpm exec dsh --profile web --port 3081",
     "test": "node --test test/*.test.js",
-    "check": "node --check src/plugin.js && node --check src/agent-tools.js && node --check src/session-runtime.js && node --check src/domain.js && node --check src/recall/recallScorer.js && node --check src/recall/recallBudget.js && node --check src/recall/recallPolicy.js && node --check lib/client.js",
+    "check": "node --check src/plugin.js && node --check src/agent-tools.js && node --check src/session-runtime.js && node --check src/domain.js && node --check src/recall/recallPreferences.js && node --check src/recall/recallScorer.js && node --check src/recall/recallBudget.js && node --check src/recall/recallPolicy.js && node --check lib/client.js",
     "verify": "pnpm run build:client && pnpm test && pnpm run check",
     "prepack": "pnpm run verify"
   },
