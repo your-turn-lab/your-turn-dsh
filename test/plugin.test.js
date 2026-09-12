@@ -237,6 +237,79 @@ test('direct task waits while local preference migration confirmation is open', 
   assert.match(decision.messages[0].content[0].text, /Every task requires a path/);
 });
 
+test('local preference registered before an agent exists is confirmed on the first task', async () => {
+  const listeners = new Map();
+  let rpcHandler;
+  let askedQuestion;
+  const liveAgent = agent('pending-local-preference');
+  const agents = new Map();
+  const ctx = {
+    tools: { register() {} },
+    systemPrompt: { section() {} },
+    userQuestions: {
+      async ask(payload) {
+        askedQuestion = payload.questions[0];
+        return { answers: [{ id: 'preference_migration', selected: ['沿用上次偏好'] }] };
+      },
+    },
+    agents: { list: () => [], get: (id) => agents.get(id) },
+    connection: { rpc: { handle(_path, handler) { rpcHandler = handler; } } },
+    on(name, handler) { listeners.set(name, handler); },
+  };
+  apply(ctx);
+  const stored = await rpcHandler('state', {
+    sessionId: liveAgent.id,
+    localPreference: { summary: '平衡参与，重要方向会问你，普通执行自动推进。', profile: { preset: 'balanced', thresholdBias: 0, maxRecall: 3 } },
+  });
+  agents.set(liveAgent.id, liveAgent);
+  listeners.get('agent/created')({ agent: liveAgent });
+
+  const decision = await listeners.get('agent/pre-step')({
+    agent: liveAgent, turn: 1, step: 1, signal: new AbortController().signal,
+    messages: [{ source: { kind: 'user' }, content: [{ type: 'text', text: '开始任务' }] }],
+  }, async () => ({ kind: 'enter', messages: [] }));
+  const snapshot = await rpcHandler('state', { sessionId: liveAgent.id });
+
+  assert.equal(stored.ok, true);
+  assert.equal(askedQuestion.id, 'preference_migration');
+  assert.equal(snapshot.value.preferenceProfile.preset, 'balanced');
+  assert.match(decision.messages[0].content[0].text, /Every task requires a path/);
+});
+
+test('local preference from state polling is confirmed after the live agent appears', async () => {
+  const listeners = new Map();
+  let rpcHandler;
+  let askedQuestion;
+  const liveAgent = agent('state-poll-preference');
+  const ctx = {
+    tools: { register() {} },
+    systemPrompt: { section() {} },
+    userQuestions: {
+      async ask(payload) {
+        askedQuestion = payload.questions[0];
+        return { answers: [{ id: 'preference_migration', selected: ['沿用上次偏好'] }] };
+      },
+    },
+    agents: { list: () => [liveAgent], get: (id) => id === liveAgent.id ? liveAgent : undefined },
+    connection: { rpc: { handle(_path, handler) { rpcHandler = handler; } } },
+    on(name, handler) { listeners.set(name, handler); },
+  };
+  apply(ctx);
+  await rpcHandler('state', {
+    sessionId: liveAgent.id,
+    localPreference: { summary: '平衡参与，重要方向会问你，普通执行自动推进。', profile: { preset: 'balanced', thresholdBias: 0, maxRecall: 3 } },
+  });
+
+  await listeners.get('agent/pre-step')({
+    agent: liveAgent, turn: 1, step: 1, signal: new AbortController().signal,
+    messages: [{ source: { kind: 'user' }, content: [{ type: 'text', text: '开始任务' }] }],
+  }, async () => ({ kind: 'enter', messages: [] }));
+  const snapshot = await rpcHandler('state', { sessionId: liveAgent.id });
+
+  assert.equal(askedQuestion.id, 'preference_migration');
+  assert.equal(snapshot.value.preferenceProfile.preset, 'balanced');
+});
+
 test('user can request reconciliation after a completed turn left stale nodes', async () => {
   const sessions = new SessionRuntimeStore();
   const liveAgent = agent('sync'); sessions.attach(liveAgent);

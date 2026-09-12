@@ -44,6 +44,7 @@ function selectedLabel(result) {
 export function createPluginRuntime(liveSessions = new SessionRuntimeStore(), options = {}) {
   const userQuestions = options.userQuestions;
   const preferenceQuestions = new Map();
+  const pendingLocalPreferences = new Map();
 
   async function snapshot(sessionId) {
     const live = sessionId ? liveSessions.get(sessionId) : undefined;
@@ -53,6 +54,13 @@ export function createPluginRuntime(liveSessions = new SessionRuntimeStore(), op
       label: live ? `LIVE AGENT · ${state.agent.provider ?? 'DSH'}/${state.agent.model ?? 'current model'}` : '等待选择 DSH 会话',
       ready: Boolean(live?.agent),
     });
+  }
+
+  function rememberLocalPreference(sessionId, localPreference) {
+    if (!sessionId || !localPreference || typeof localPreference !== 'object') return;
+    pendingLocalPreferences.set(String(sessionId), localPreference);
+    const live = liveSessions.get(sessionId);
+    if (live?.agent?.id) pendingLocalPreferences.set(String(live.agent.id), localPreference);
   }
 
   async function askPreferenceQuestions(record, { force = false, source = 'cold_start', signal } = {}) {
@@ -128,15 +136,41 @@ export function createPluginRuntime(liveSessions = new SessionRuntimeStore(), op
     return task;
   }
 
+  async function resolvePreferenceBeforeTask(record, { signal } = {}) {
+    if (record.state.preferenceOnboarding?.status === 'asking') {
+      await askPreferenceQuestions(record, { signal });
+      return record.state;
+    }
+    if (record.state.preferenceProfile || record.state.preferenceOnboarding?.status !== 'needed') return record.state;
+    const id = String(record.agent.id);
+    const localProfile = pendingLocalPreferences.get(id) ?? pendingLocalPreferences.get(String(record.session?.id ?? ''));
+    if (localProfile) {
+      pendingLocalPreferences.delete(id);
+      pendingLocalPreferences.delete(String(record.session?.id ?? ''));
+      return confirmPreferenceMigration(record, localProfile, { signal });
+    }
+    return askPreferenceQuestions(record, { signal });
+  }
+
   async function handle(endpoint, payload) {
     try {
       const sessionId = typeof payload?.sessionId === 'string' ? payload.sessionId : undefined;
-      if (endpoint === 'state') return ok(await snapshot(sessionId));
+      if (endpoint === 'state') {
+        rememberLocalPreference(sessionId, payload?.localPreference);
+        return ok(await snapshot(sessionId));
+      }
       if (endpoint !== 'dispatch') return fail('not-found', `Unknown endpoint: ${endpoint}`);
       if (!payload || typeof payload !== 'object' || !allowedActions.has(payload.type)) {
         return fail('invalid-action', 'Unsupported task action.');
       }
-      if (!sessionId || !liveSessions.get(sessionId)) return fail('session-not-found', 'No live DSH Agent is attached to this session.');
+      if (!sessionId) return fail('session-not-found', 'No live DSH Agent is attached to this session.');
+      if (!liveSessions.get(sessionId)) {
+        if (payload.type === 'CONFIRM_PREFERENCE_MIGRATION' && payload.profile) {
+          rememberLocalPreference(sessionId, payload.profile);
+          return ok(await snapshot(sessionId));
+        }
+        return fail('session-not-found', 'No live DSH Agent is attached to this session.');
+      }
       const record = liveSessions.require(sessionId);
       if (payload.type === 'START_PREFERENCE_ONBOARDING') {
         try {
@@ -194,7 +228,7 @@ export function createPluginRuntime(liveSessions = new SessionRuntimeStore(), op
     }
   }
 
-  return { handle, liveSessions, askPreferenceQuestions, confirmPreferenceMigration };
+  return { handle, liveSessions, askPreferenceQuestions, confirmPreferenceMigration, resolvePreferenceBeforeTask };
 }
 
 export function apply(ctx) {
@@ -212,12 +246,7 @@ export function apply(ctx) {
     const directPrompt = messages.some((message) => message.source?.kind === 'user');
     const priorPathComplete = record.state.nodes.length > 0 && record.state.nodes.every((node) => ['completed', 'skipped'].includes(node.status));
     if (!directPrompt || (record.state.nodes.length > 0 && !priorPathComplete)) return decision;
-    if (record.state.preferenceOnboarding?.status === 'asking') {
-      await runtime.askPreferenceQuestions(record, { signal });
-    }
-    if (!record.state.preferenceProfile && record.state.preferenceOnboarding?.status === 'needed') {
-      await runtime.askPreferenceQuestions(record, { signal });
-    }
+    await runtime.resolvePreferenceBeforeTask(record, { signal });
     const planningNotice = createUserMessage({
       content: [{ type: 'text', text: '[Visible path required] Before any research, execution, or final answer for this user request, your first tool action must be publish_task_plan. Every task requires a path; a simple task may use one concise node. User identity affects growth recall only, never whether the path exists.' }],
       source: { kind: 'plugin', plugin: name, form: 'notice', summary: 'Publish the visible path first' },
