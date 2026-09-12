@@ -82,3 +82,6 @@ npm run test:browser
 Root Directory：`demo-web`；Framework：Other；Install：`npm ci --workspaces=false`；Build：`npm run build`；Output：`dist`。无环境变量。可用 CLI 发布；当前 GitHub 自动部署未关联。
 
 备用地址：https://your-turn-demo.vercel.app 。公开免登录不代表国内网络或微信必然可达，赛事仍提交魔搭入口。
+
+DeepSeek 鲸鱼标志来源：[DeepSeek 官方仓库](https://github.com/deepseek-ai/DeepSeek-LLM/blob/main/images/logo.svg)，仅裁切显示鲸鱼部分，并以 CSS 显示为黑色。
+

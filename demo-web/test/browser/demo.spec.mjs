@@ -62,9 +62,16 @@ async function revise(page){
  await page.locator('.hil-substep').filter({hasText:'换成适合听众的例子'}).click();
  const editor=page.getByRole('textbox',{name:'修改这一步的做法'});await expect(editor).toHaveValue(scenario.revision);
  await editor.fill(scenario.revision+' 保留我的互动选择。');
+ await page.clock.pauseAt(await page.evaluate(()=>Date.now()+1000));
  await page.getByRole('button',{name:'保存并从这里重做'}).click();await page.getByRole('button',{name:'关闭详情'}).click();
  if(page.viewportSize().width<700)await page.getByRole('button',{name:'收起路径',exact:true}).click();
- for(let i=0;i<4;i++)await forward(page,'rerunning');
+ for(let i=0;i<4;i++){
+   await fits(page,'rerunning-'+i);
+   const geometry=await page.locator('.screen-content>.screen-card').evaluate(card=>({titleBottom:card.querySelector('h2').getBoundingClientRect().bottom,leadTop:card.querySelector('.screen-lead').getBoundingClientRect().top}));
+   expect(geometry.leadTop,'rerunning description stays below title').toBeGreaterThanOrEqual(geometry.titleBottom+8);
+   if(i===3)await page.screenshot({animations:'disabled',path:'verification/rerunning-'+page.viewportSize().width+'.png'});
+   await forward(page,'rerunning');
+ }
  await expect(heading(page,'你的判断，让这堂课有了自己的讲法。')).toBeVisible();
 }
 async function animateToEnd(page){
