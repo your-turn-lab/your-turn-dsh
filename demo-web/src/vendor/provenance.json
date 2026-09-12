@@ -1,0 +1,9 @@
+{
+  "repository": "your-turn-lab/your-turn-dsh",
+  "branch": "zhongkesong-p0-1-2",
+  "commit": "919f335e847eb2358379947b3571da8cf74fc884",
+  "pluginSource": "src/client.jsx",
+  "pluginSha256": "71662f6e1b3073cc975ef9ce08b0abea14cc0a36de0880b97ca48ce3572368dc",
+  "questionCssSource": "@deepseek-ai/dsh-client-ui-user-questions@0.1.2-rc.1/lib/client.js",
+  "method": "Plugin source copied byte-for-byte; native question CSS extracted without modification. DSH shell and question JSX implemented independently."
+}

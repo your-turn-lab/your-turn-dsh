@@ -1,0 +1,25 @@
+{
+  "name": "your-turn-demo-web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "dev": "node scripts/build.mjs --serve",
+    "preview": "node scripts/build.mjs --serve",
+    "test": "node --test test/*.test.mjs",
+    "test:browser": "playwright test",
+    "verify": "npm test && npm run build"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "react": "19.1.1",
+    "react-dom": "19.1.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "esbuild": "0.25.10"
+  }
+}
