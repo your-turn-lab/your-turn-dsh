@@ -6,7 +6,7 @@ async function start(page,mode='平衡模式'){await page.goto('/');await page.g
 async function answer(page){await page.getByRole('button',{name:'采用这个判断'}).click();}
 test('balanced story, original editor, optional revision, download and learning',async({page,baseURL})=>{
  const errors=[],external=[];page.on('pageerror',e=>errors.push(e.message));page.on('request',r=>{if(!r.url().startsWith(baseURL))external.push(r.url());});
- await page.goto('/');await expect(page.locator('.dawn-profile img')).toBeVisible();expect(await page.locator('.dawn-profile img').evaluate(img=>img.complete&&img.naturalWidth>0)).toBe(true);
+ await page.goto('/');await expect(page.locator('.dawn-profile img')).toBeVisible();await expect.poll(()=>page.locator('.dawn-profile img').evaluate(img=>img.complete&&img.naturalWidth>0)).toBe(true);
  await expect(page.getByText('固定情境演示 · 非实时 Agent')).toHaveCount(0);await page.screenshot({path:'verification/00-onboarding.png',fullPage:true});
  await start(page);await expect(page.getByRole('heading',{name:mainTitle})).toBeVisible({timeout:10000});await expect(page.locator('.hil-node.waiting_for_user').filter({hasText:'这堂课怎么讲'})).toBeVisible({timeout:500});
  await expect(page.getByText('留给你的练习')).toBeVisible();await page.screenshot({path:'verification/01-your-turn.png',fullPage:true});await answer(page);

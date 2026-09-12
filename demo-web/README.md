@@ -1,5 +1,7 @@
 # Your Turn · Dawn 交互 Demo
 
+公开体验：[your-turn-demo.vercel.app](https://your-turn-demo.vercel.app)。无需登录，可在电脑和手机浏览器打开。
+
 Dawn 要为银行客户准备一场 60 分钟 AI 办公培训。Your Turn 把培训主线留给她练习判断，把现场互动留给她选择适合自己的表达，其余工作继续 Auto。
 
 这是同一仓库内可独立运行的 Web Demo，使用 React、esbuild 和本地状态，不需要 API key。真实 DSH 插件保留为产品实现与源码证据；Demo 复用它的界面和召回策略纯函数，通过预设情境展示完整体验。
@@ -17,7 +19,7 @@ npm run dev
 
 ## 连接 Vercel
 
-当前尚未部署。将包含 `demo-web/` 的分支推送到 GitHub 后，在 Vercel 导入 `your-turn-lab/your-turn-dsh`，使用以下设置：
+当前生产版由 Vercel CLI 发布。若从 GitHub 新建项目，导入 `your-turn-lab/your-turn-dsh` 并使用以下设置：
 
 | 设置 | 值 |
 | --- | --- |
@@ -32,6 +34,8 @@ npm run dev
 `vercel.json` 已包含构建命令和输出目录。确认 Production Branch 指向包含 Demo 的分支；无需执行仓库根目录的 pnpm 命令，也不需要 Root Directory 以外的文件。
 
 部署后，用未登录的浏览器窗口检查公开链接，确保评委无需登录 Vercel 即可访问。相关设置见 [Vercel 构建配置](https://vercel.com/docs/builds/configure-a-build) 与 [Deployment Protection](https://vercel.com/docs/deployment-protection)。
+
+当前 GitHub 自动部署尚未连接：需要项目所有者在 Vercel 添加 GitHub Login Connection，再授权此仓库。此前仍可使用 CLI 发布 `zhongkesong-p0-1-2` 分支的更新。
 
 ## 选择会怎样影响结果
 
@@ -68,4 +72,4 @@ npm run test:browser
 
 单元检查覆盖状态流、模式和选项变化、播放控制及源码隔离；浏览器检查验证可点击流程、节点编辑、结果和布局。浏览器测试使用独立的无头 Chromium，可通过 `PORT` 指定端口。截图与构建依赖清单输出到已忽略的 `verification/` 目录。
 
-以本次命令输出为验证结果。浏览器通过和本地 build 成功不等于真实 DSH 会话验证，也不代表已完成 Vercel 部署。
+若验证线上版本，先设置 `DEMO_BASE_URL=https://your-turn-demo.vercel.app`，再运行 `npm run test:browser`；此时不会启动本地服务器。检查包括无登录访问和 360 / 390 宽度触屏模拟，不等于所有实体手机与 Safari 的实机测试。
