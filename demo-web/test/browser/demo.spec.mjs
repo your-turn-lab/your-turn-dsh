@@ -1,108 +1,34 @@
 import { test, expect } from '@playwright/test';
+import { readFile } from 'node:fs/promises';
 import { scenario } from '../../src/scenario.mjs';
-
-async function begin(page) {
-  await page.goto('/');
-  await page.getByRole('button', { name: '开始任务' }).click();
-  await expect(page.getByRole('navigation', { name: '演示进度' })).toBeVisible();
-  await expect(page.getByRole('region', { name: '人机决策路径' })).toBeVisible();
-}
-test('judge completes the streamlined run, automatic work, original My Turn, and value recap', async ({ page }) => {
-  const errors = [], external = [];
-  page.on('pageerror', e => errors.push(e.message));
-  page.on('request', r => { if (!r.url().startsWith('http://127.0.0.1:4173')) external.push(r.url()); });
-  await page.goto('/');
-  await page.screenshot({ path: 'verification/00-onboarding.png', fullPage: true });
-  await begin(page);
-  await expect(page.getByRole('heading', { name: '这 60 分钟，按什么逻辑讲？' })).toBeVisible({ timeout: 10000 });
-  await expect(page.locator('.hil-node.waiting_for_user').filter({ hasText: '培训主线' })).toBeVisible({ timeout: 500 });
-  await page.getByRole('button', { name: /个人办公 → 团队协作 → 知识复用/ }).click();
-  await page.getByRole('textbox', { name: '补充你的判断' }).fill(scenario.mainNote);
-  await page.screenshot({ path: 'verification/01-your-turn.png', fullPage: true });
-  await page.getByRole('button', { name: '采用这个判断' }).click();
-  await expect(page.getByRole('heading', { name: '这一步，要请 Dawn 回来吗？' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: '评估后，继续 Auto' })).toBeVisible({ timeout: 6000 });
-  await expect(page.locator('[data-question-key]')).toHaveCount(0);
-  await expect(page.getByText('沿用你的主线，召回次数不增加')).toBeVisible();
-  await page.screenshot({ path: 'verification/02-no-interruption.png', fullPage: true });
-  await expect(page.getByRole('heading', { name: '哪种互动，你在现场说得自然？' })).toBeVisible({ timeout: 10000 });
-  await page.getByRole('button', { name: /自然、低压力的痛点投票/ }).click();
-  await page.getByRole('button', { name: '采用这个判断' }).click();
-  await expect(page.getByRole('heading', { name: '方案准备好了，里面有你的判断。' })).toBeVisible();
-  await page.getByText('查看培训方案 · 60 分钟', { exact: true }).click();
-  const download = page.waitForEvent('download');
-  await page.getByRole('button', { name: '下载备课方案' }).click();
-  expect((await download).suggestedFilename()).toBe('Dawn-training-v1.md');
-  await page.getByRole('button', { name: '确认成果，查看客户消息' }).click();
-  await expect(page.locator('.hil-node.completed')).toHaveCount(6, { timeout: 500 });
-  await page.getByRole('button', { name: '定位贯穿案例' }).click();
-  await page.locator('.hil-substep').filter({ hasText: '确定授课对象与案例' }).click();
-  const editor = page.getByRole('textbox', { name: '修改这一步的做法' });
-  await expect(editor).toHaveValue(scenario.revision);
-  await editor.fill(`${scenario.revision}\n请补充跨组核对的环节。`);
-  await page.screenshot({ path: 'verification/03-my-turn.png', fullPage: true });
-  await page.getByRole('button', { name: '保存并从这里重做' }).click();
-  await page.getByRole('button', { name: '关闭详情' }).click();
-  await expect(page.getByRole('heading', { name: '任务推进了，你的判断也留下来了。' })).toBeVisible({ timeout: 12000 });
-  await expect(page.getByText('系统变更与故障复盘', { exact: true })).toBeVisible();
-  await expect(page.locator('.hil-node.completed')).toHaveCount(6);
-  await page.screenshot({ path: 'verification/04-value-recap.png', fullPage: true });
-  await page.getByText('查看培训方案 · 60 分钟 · V1 / V2 对比', { exact: true }).click();
-  await expect(page.getByRole('heading', { name: '贯穿案例 · 系统变更与故障复盘' })).toBeVisible();
-  await expect(page.getByText(/请补充跨组核对的环节/).first()).toBeVisible();
-  await page.getByRole('button', { name: 'V1 · 首轮' }).click();
-  await expect(page.getByRole('heading', { name: '贯穿案例 · 会议记录到团队行动清单' })).toBeVisible();
-  await page.getByRole('button', { name: 'V2 · My Turn 后' }).click();
-  await page.getByText('查看培训方案 · 60 分钟 · V1 / V2 对比', { exact: true }).click();
-  await page.getByRole('button', { name: '确认验收最终成果', exact: true }).click();
-  await page.getByText('继续使用，会有什么变化？', { exact: false }).click();
-  const expressionRow = page.getByRole('row').filter({ hasText: '现场互动表达' });
-  await expect(expressionRow.getByText('Auto', { exact: true })).toHaveCount(2);
-  await page.getByRole('button', { name: '持续使用后（示意）' }).click();
-  await expect(expressionRow.getByText('Your Turn', { exact: true })).toBeVisible();
-  await page.screenshot({ path: 'verification/05-learning.png', fullPage: true });
-  await page.getByRole('button', { name: '重新开始', exact: true }).click();
-  await page.getByRole('button', { name: '确认重新开始' }).click();
-  await expect(page.getByRole('button', { name: '开始任务' })).toBeVisible();
-  expect(errors).toEqual([]); expect(external).toEqual([]);
+const mainTitle='这 60 分钟，按什么逻辑讲？', interactionTitle='哪种互动，你在现场说得自然？', resultTitle='方案准备好了，里面有你的判断。';
+async function start(page,mode='平衡模式'){await page.goto('/');await page.getByRole('button',{name:mode,exact:true}).click();await page.getByRole('button',{name:'陪 Dawn 备课'}).click();}
+async function answer(page){await page.getByRole('button',{name:'采用这个判断'}).click();}
+test('balanced story, original editor, optional revision, download and learning',async({page,baseURL})=>{
+ const errors=[],external=[];page.on('pageerror',e=>errors.push(e.message));page.on('request',r=>{if(!r.url().startsWith(baseURL))external.push(r.url());});
+ await page.goto('/');await expect(page.locator('.dawn-profile img')).toBeVisible();expect(await page.locator('.dawn-profile img').evaluate(img=>img.complete&&img.naturalWidth>0)).toBe(true);
+ await expect(page.getByText('固定情境演示 · 非实时 Agent')).toHaveCount(0);await page.screenshot({path:'verification/00-onboarding.png',fullPage:true});
+ await start(page);await expect(page.getByRole('heading',{name:mainTitle})).toBeVisible({timeout:10000});await expect(page.locator('.hil-node.waiting_for_user').filter({hasText:'这堂课怎么讲'})).toBeVisible({timeout:500});
+ await expect(page.getByText('留给你的练习')).toBeVisible();await page.screenshot({path:'verification/01-your-turn.png',fullPage:true});await answer(page);
+ await expect(page.getByRole('heading',{name:'这一步，要请 Dawn 回来吗？'})).toBeVisible();await expect(page.getByRole('heading',{name:'评估后，继续 Auto'})).toBeVisible({timeout:5000});await expect(page.locator('[data-question-key]')).toHaveCount(0);await page.screenshot({path:'verification/02-no-interruption.png',fullPage:true});
+ await expect(page.getByRole('heading',{name:interactionTitle})).toBeVisible({timeout:10000});await expect(page.getByText('让 AI 加班，大家准点下班。')).toBeVisible();await page.screenshot({path:'verification/03-expression.png',fullPage:true});await answer(page);
+ await expect(page.getByRole('heading',{name:resultTitle})).toBeVisible();await expect(page.getByText('2 次邀请',{exact:true})).toBeVisible();await page.getByText('查看培训方案 · 60 分钟',{exact:true}).click();
+ const downloading=page.waitForEvent('download');await page.getByRole('button',{name:'下载备课方案'}).click();const file=await downloading;expect(file.suggestedFilename()).toBe('Dawn-training-v1.md');expect(await readFile(await file.path(),'utf8')).toContain('讲课主线 · Dawn 的判断');
+ await page.getByText('查看培训方案 · 60 分钟',{exact:true}).click();await page.getByRole('button',{name:'这版可以去备课了'}).click();await expect(page.getByRole('heading',{name:resultTitle})).toBeVisible();await expect(page.getByRole('status',{name:'客户临时消息'})).toBeVisible({timeout:5000});
+ await page.getByRole('button',{name:'检查哪里要改'}).click();await page.getByRole('button',{name:'找到「课堂用什么例子」'}).click();await page.locator('.hil-substep').filter({hasText:'换成适合听众的例子'}).click();
+ const editor=page.getByRole('textbox',{name:'修改这一步的做法'});await expect(editor).toHaveValue(scenario.revision);await editor.fill(`${scenario.revision}\n请补充跨组核对环节。`);const rerun=page.getByRole('button',{name:'保存并从这里重做'});expect((await rerun.boundingBox()).width).toBeGreaterThanOrEqual(40);await page.screenshot({path:'verification/04-my-turn.png',fullPage:true});await rerun.click();await page.getByRole('button',{name:'关闭详情'}).click();
+ await expect(page.getByRole('heading',{name:'换了例子，保留你的讲法。'})).toBeVisible({timeout:12000});await expect(page.locator('.hil-node.completed')).toHaveCount(6);await page.getByText('查看培训方案 · 60 分钟 · V1 / V2 对比',{exact:true}).click();await expect(page.getByRole('heading',{name:'课堂里的例子 · 系统变更与故障复盘'})).toBeVisible();await page.getByRole('button',{name:'V1 · 首轮'}).click();await expect(page.getByRole('heading',{name:'课堂里的例子 · 小微企业信贷业务推进'})).toBeVisible();await page.getByRole('button',{name:'V2 · My Turn 后'}).click();
+ await page.getByText('你补充的备注 · 待人工应用',{exact:true}).click();await expect(page.getByText(/修改要求：/).first()).toBeVisible();await page.getByText('查看培训方案 · 60 分钟 · V1 / V2 对比',{exact:true}).click();await page.screenshot({path:'verification/05-value-recap.png',fullPage:true});await page.getByText('用久了，它会怎样更懂 Dawn？',{exact:false}).click();await page.getByRole('button',{name:'持续使用后（示意）'}).click();await expect(page.getByRole('row').filter({hasText:'现场互动表达'}).getByText('Your Turn',{exact:true})).toBeVisible();
+ await page.getByRole('button',{name:'重新开始',exact:true}).click();await page.getByRole('button',{name:'确认重新开始'}).click();await expect(page.getByRole('button',{name:'陪 Dawn 备课'})).toBeVisible();expect(errors).toEqual([]);expect(external).toEqual([]);
 });
-
-test('pause and process history suspend playback; reset cancels scheduled progress', async ({ page }) => {
-  await page.clock.install();
-  await begin(page);
-  await page.getByRole('button', { name: '暂停演示' }).click();
-  await page.clock.runFor(10000);
-  await expect(page.getByRole('heading', { name: '任务路径已准备' })).toBeVisible();
-  await page.getByRole('button', { name: '继续演示' }).click();
-  await page.getByRole('button', { name: '回看过程' }).click();
-  await page.clock.runFor(10000);
-  await expect(page.getByRole('heading', { name: '任务路径已准备' })).toBeVisible();
-  await page.getByRole('button', { name: '收起记录', exact: true }).first().click();
-  await page.clock.runFor(1500);
-  await expect(page.getByRole('heading', { name: '先把资料整理好' })).toBeVisible();
-  await page.getByRole('button', { name: '重新开始', exact: true }).click();
-  await page.getByRole('button', { name: '确认重新开始' }).click();
-  await page.clock.runFor(30000);
-  await expect(page.getByRole('button', { name: '开始任务' })).toBeVisible();
+test('pause, history and reset stop automatic progress',async({page})=>{
+ await page.clock.install();await start(page);await page.getByRole('button',{name:'暂停演示'}).click();await page.clock.runFor(10000);await expect(page.getByRole('heading',{name:'任务路径已准备'})).toBeVisible();await page.getByRole('button',{name:'继续演示'}).click();const history=page.getByRole('button',{name:'回看过程'});expect((await history.boundingBox()).height).toBeGreaterThanOrEqual(40);await history.click();await page.clock.runFor(10000);await expect(page.getByRole('heading',{name:'任务路径已准备'})).toBeVisible();await page.getByRole('button',{name:'收起记录',exact:true}).first().click();await page.clock.runFor(1500);await expect(page.getByRole('heading',{name:'先把资料整理好'})).toBeVisible();await page.getByRole('button',{name:'重新开始',exact:true}).click();await page.getByRole('button',{name:'确认重新开始'}).click();await page.clock.runFor(30000);await expect(page.getByRole('button',{name:'陪 Dawn 备课'})).toBeVisible();
 });
-
-test('projector and narrow layouts remain readable with editable preferences', async ({ page }) => {
-  for (const size of [{ width: 1280, height: 720 }, { width: 390, height: 844 }]) {
-    await page.setViewportSize(size); await page.goto('/');
-    await expect(page.getByRole('button', { name: '开始任务' })).toBeVisible();
-    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-    await page.getByText('编辑偏好', { exact: true }).click();
-    await page.getByRole('textbox', { name: '留给我的判断' }).fill('客户表达和课程主线');
-    await page.getByLabel('你希望我什么时候暂停下来问你？').selectOption('0');
-    await page.getByText('编辑偏好', { exact: true }).click();
-    await page.screenshot({ path: `verification/06-onboarding-${size.width}.png`, fullPage: true });
-    await page.getByRole('button', { name: '开始任务' }).click();
-    await expect(page.getByRole('heading', { name: '这 60 分钟，按什么逻辑讲？' })).toBeVisible({ timeout: 10000 });
-    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-    if (size.width === 1280) {
-      const button = await page.getByRole('button', { name: '采用这个判断' }).boundingBox();
-      expect(button.y + button.height).toBeLessThanOrEqual(size.height - 8);
-    }
-    await page.screenshot({ path: `verification/07-recall-${size.width}.png`, fullPage: true });
-  }
+test('modes change real questions and attribute automatic choices to AI',async({page})=>{
+ await page.clock.install();await start(page,'快速完成');await page.clock.runFor(5000);await expect(page.getByRole('heading',{name:mainTitle})).toBeVisible();await answer(page);await page.clock.runFor(14000);await expect(page.getByRole('heading',{name:resultTitle})).toBeVisible();await expect(page.getByText('1 次邀请',{exact:true})).toBeVisible();await expect(page.getByText('AI 沿用偏好代选',{exact:true})).toBeVisible();await page.screenshot({path:'verification/06-fast-mode.png',fullPage:true});
+ await start(page,'练习判断');await page.clock.runFor(5000);await answer(page);await page.clock.runFor(7000);await expect(page.getByRole('heading',{name:'工具之间的关系，怎么讲更清楚？'})).toBeVisible();await page.clock.runFor(30000);await expect(page.getByRole('heading',{name:'工具之间的关系，怎么讲更清楚？'})).toBeVisible();await page.getByRole('button',{name:/按场景逐页对照/}).click();await answer(page);await page.clock.runFor(3000);await expect(page.getByRole('heading',{name:interactionTitle})).toBeVisible();await page.getByRole('button',{name:/匿名问题收集/}).click();await answer(page);await expect(page.getByText('3 次邀请',{exact:true})).toBeVisible();await expect(page.getByText('按场景逐页对照',{exact:true}).first()).toBeVisible();await expect(page.getByText('匿名问题收集',{exact:true}).first()).toBeVisible();
+});
+test('projector and narrow layouts keep controls readable',async({page})=>{
+ await page.clock.install();for(const size of [{width:1280,height:720},{width:390,height:844}]){
+ await page.setViewportSize(size);await page.goto('/');expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);await page.screenshot({path:`verification/07-profile-${size.width}.png`,fullPage:true});await page.getByText('编辑偏好',{exact:true}).click();await page.getByRole('textbox',{name:'留给我的判断'}).fill('讲课逻辑和自然的现场表达');await page.getByText('编辑偏好',{exact:true}).click();await page.getByRole('button',{name:'陪 Dawn 备课'}).click();await page.clock.runFor(5000);await expect(page.getByRole('heading',{name:mainTitle})).toBeVisible();await page.screenshot({path:`verification/08-main-${size.width}.png`,fullPage:true});await answer(page);await page.clock.runFor(10000);await expect(page.getByRole('heading',{name:interactionTitle})).toBeVisible();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);if(size.width===1280){const button=await page.getByRole('button',{name:'采用这个判断'}).boundingBox();expect(button.y+button.height).toBeLessThanOrEqual(size.height-8);}await page.screenshot({path:`verification/09-expression-${size.width}.png`,fullPage:true});}
 });

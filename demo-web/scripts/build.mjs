@@ -1,10 +1,11 @@
 import { build, context } from 'esbuild';
-import { mkdir, copyFile, writeFile } from 'node:fs/promises';
+import { mkdir, copyFile, writeFile, cp } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 
 process.chdir(fileURLToPath(new URL('../', import.meta.url)));
 await mkdir('dist', { recursive: true });
 await copyFile('index.html', 'dist/index.html');
+await cp('public', 'dist', { recursive: true });
 const options = {
   entryPoints: ['src/app.jsx'], bundle: true, outdir: 'dist',
   format: 'esm', platform: 'browser', target: 'es2022', jsx: 'automatic',

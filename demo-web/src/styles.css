@@ -15,6 +15,7 @@
 body { margin: 0; -webkit-font-smoothing: antialiased; }
 button, input, textarea, select { font: inherit; }
 button, a, input, textarea, select { touch-action: manipulation; }
+button, summary { -webkit-tap-highlight-color: transparent; }
 button { cursor: pointer; }
 button:disabled { cursor: default; opacity: .55; }
 a { color: #62626c; text-decoration: none; }
@@ -197,6 +198,63 @@ th { font-weight: 400; color: #92929b; font-size: 12px; }
 .app .hil-drawer .hil-profile { display: none; }
 .app .hil-drawer .hil-goal { font-size: 14px; line-height: 1.7; }
 .phase-clientChange .hil-node-group:nth-child(3) .hil-node { border-color: #e8b99d; background: #fff6f0; }
+.dawn-profile { display: grid; grid-template-columns: 135px minmax(0,1fr); align-items: center; gap: 24px; margin: 0 0 24px; }
+.dawn-profile img { width: 135px; height: 184px; object-fit: contain; }
+.dawn-profile h1 { font-size: 25px; line-height: 1.5; letter-spacing: -.4px; font-weight: 600; margin: 9px 0; max-width: 440px; }
+.dawn-profile p { font-size: 14px; color: #777780; line-height: 1.85; margin: 8px 0 0; }
+.dawn-profile .profile-name { color: #8b8b94; font-size: 12px; }
+.intro-card .Mbwy4a_title { font-size: 20px; }
+.intro-promise { margin: 0 0 20px; font-size: 15px; }
+.task-controls { margin: 5px 0 10px; }
+.task-controls .hil-segment { max-width: 470px; gap: 7px; }
+.task-controls .hil-segment-btn { font-family: var(--font-ui); font-size: 13px; padding: 10px 8px; font-weight: 500; }
+.mode-hint { font-size: 12px; color: #8b8b94; margin: 9px 0 0; }
+.run-settings { margin: -5px 0 16px; }
+.run-settings>summary { font-size: 12px; color: #92929b; }
+.run-settings[open] { padding: 12px 14px; border-radius: 12px; background: #f8f8f9; }
+.sidebar-note { font-size: 12px; color: #9b9ba3; padding: 12px 10px; line-height: 2; }
+.recall-summary { display: flex; align-items: center; gap: 12px; border-bottom: 1px solid #e6e6e9; padding: 0 0 16px; margin-bottom: 3px; }
+.recall-summary strong { font-size: 18px; color: #52525b; font-weight: 550; white-space: nowrap; }
+.recall-summary span { font-size: 12px; color: #92929b; }
+.late-message { margin: 18px 0 0; border: 1px solid #dedee3; border-radius: 16px; padding: 19px 23px; background: #fafafa; animation: message-arrive .45s ease-out; }
+.message-sender { display: flex; gap: 7px; align-items: center; font-size: 12px; color: #62626c; }
+.message-sender>span:last-child { margin-left: auto; color: #a1a1aa; font-size: 11px; }
+.message-dot { width: 6px; height: 6px; border-radius: 50%; background: #e85d04; }
+.late-message p { font-size: 14px; margin: 11px 0; color: #52525b; }
+.late-message p.dawn-reaction { color: #8b8b94; font-size: 13px; }
+.late-message .actions { margin-top: 14px; }
+.pending-notes { border-left: 2px solid #d5c5a5; padding-left: 12px; margin: 15px 0; }
+.pending-notes p { font-size: 13px; }
+.ui-icon { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.sidebar-bottom button { display: inline-grid; place-items: center; min-width: 36px; min-height: 36px; margin-left: 0; padding: 5px; background: #ededf0; border-radius: 10px; }
+.sidebar-bottom small { font-size: 11px; }
+.conversation-footer { justify-content: flex-end; }
+.conversation-footer button { display: inline-flex; align-items: center; gap: 9px; padding: 12px 17px; border: 1px solid #dedee3; border-radius: 11px; font-size: 14px; color: #62626c; background: #fafafa; }
+.conversation-footer button:hover { color: #242428; background: #f0f0f3; }
+.stage-label .text-button { font-size: 13px; min-height: 38px; }
+.playback-controls button { font-size: 13px; padding: 10px 13px; border-radius: 9px; background: #eaeaee; }
+.Mbwy4a_footer .action { min-height: 43px; font-size: 14px; padding-left: 19px; padding-right: 19px; }
+.app .hil-summary-link { min-height: 42px; font-size: 13px; }
+.app .hil-more summary { font-size: 13px; padding: 8px 0; }
+.app .hil-substep { cursor: pointer; }
+.app .hil-substep-title { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.app .hil-substep-title::after { content: '↗'; display: inline-grid; place-items: center; width: 24px; height: 24px; border: 1px solid #dedee3; border-radius: 7px; color: #8b8b94; flex-shrink: 0; font-size: 15px; }
+.app .hil-substep:hover .hil-substep-title::after, .app .hil-substep.open .hil-substep-title::after { background: #e4e4e7; color: #414149; }
+.app .hil-rerun-button { inline-size: 42px!important; block-size: 42px!important; min-inline-size: 42px!important; min-block-size: 42px!important; max-inline-size: 42px!important; max-block-size: 42px!important; background: #52525b!important; color: white; }
+.app .hil-rerun-button svg { width: 22px; height: 22px; }
+.app .hil-substep-editor .hil-textarea { padding-bottom: 58px; }
+.phase-clientChange .hil-rerun-button:not(:disabled) { animation: invite-glow 2.5s ease-in-out 3; box-shadow: 0 0 0 4px #e6e6e9; }
+.phase-clientChange .hil-node-group:nth-child(3) .hil-node { animation: invite-glow 2.5s ease-in-out 3; }
+.value-label { display: inline-block; color: #ad673c; font-size: 12px; margin-bottom: 5px; }
+.ai-opening { display: flex; align-items: baseline; gap: 10px; padding: 9px 12px; border-radius: 9px; margin-top: 12px; background: #ebebee; font-size: 13px; color: #777780; }
+.ai-opening>span { color: #92929b; font-size: 11px; white-space: nowrap; }
+.phase-main [data-question-key], .phase-interaction [data-question-key], .phase-relation [data-question-key] { animation: invite-glow 2.5s ease-in-out 2; }
+.Mbwy4a_footer .action.primary:not(:disabled) { position: relative; overflow: hidden; }
+.Mbwy4a_footer .action.primary:not(:disabled)::after { content: ''; pointer-events: none; position: absolute; inset: -30% auto -30% -65%; width: 40%; background: linear-gradient(105deg,transparent,#ffffff29,transparent); transform: skewX(-15deg); animation: next-light 6s ease-in-out 3; }
+.action.primary:focus-visible { outline-offset: 4px; }
+@keyframes invite-glow { 50% { box-shadow: 0 0 0 1px #e8c6af, 0 5px 28px #e85d0410; } }
+@keyframes next-light { 0%,25% { left: -65%; } 55%,100% { left: 150%; } }
+@keyframes message-arrive { from { opacity: 0; transform: translateY(9px); } to { opacity: 1; transform: translateY(0); } }
 @media(max-width:1100px) {
   .session-sidebar { width: 145px; } .workspace { margin-left: 145px; padding: 0 22px; }
   .brand-context { display: none; } .card-content { padding-left: 23px; padding-right: 23px; }
@@ -208,6 +266,13 @@ th { font-weight: 400; color: #92929b; font-size: 12px; }
   .evaluation-steps { flex-wrap: wrap; }
 }
 @media(max-width:650px) {
+  .field textarea, .app .hil-textarea, .preference-grid select { font-size: 16px; }
+  .dawn-profile { grid-template-columns: 82px minmax(0,1fr); gap: 14px; margin-bottom: 22px; }
+  .dawn-profile img { width: 82px; height: 155px; }
+  .dawn-profile h1 { font-size: 20px; }
+  .dawn-profile p { font-size: 12px; }
+  .recall-summary { align-items: flex-start; flex-direction: column; gap: 3px; }
+  .late-message { padding: 17px; }
   .workspace { margin: 0; padding: 0 16px; } .topbar { padding: 0 16px; gap: 8px; } .topbar a { display: none; }
   .brand { font-size: 14px; } .topbar .actions { gap: 3px; } .demo-badge { font-size: 11px; }
   .demo-progress { padding: 18px 0; } .conversation { padding-top: 8px; scroll-margin-top: 130px; }
@@ -220,6 +285,20 @@ th { font-weight: 400; color: #92929b; font-size: 12px; }
   .impact-row { gap: 10px; } .learning-disclosure summary>span { display: block; margin-left: 14px; }
 }
 @media(min-width:900px) and (max-height:800px) {
+  .dawn-profile { margin-bottom: 16px; gap: 20px; grid-template-columns: 105px minmax(0,1fr); }
+  .dawn-profile img { width: 105px; height: 152px; }
+  .dawn-profile h1 { font-size: 22px; }
+  .dawn-profile p { font-size: 13px; }
+  .field textarea { min-height: 52px; padding: 9px 12px; }
+  .run-settings { margin-bottom: 10px; }
+  .phase-interaction .Mbwy4a_detail { font-size: 13px; }
+  .phase-interaction .Mbwy4a_option { padding-top: 8px; padding-bottom: 8px; }
+  .phase-interaction .ai-opening { margin-top: 7px; padding-top: 6px; padding-bottom: 6px; }
+  .phase-interaction .Mbwy4a_header { padding-top: 15px; }
+  .phase-interaction .Mbwy4a_detail { margin-top: 8px; }
+  .phase-interaction .field { margin: 5px 0; }
+  .phase-interaction .Mbwy4a_footer { margin-top: 0; padding-top: 8px; padding-bottom: 10px; }
+  .phase-interaction .Mbwy4a_title { font-size: 20px; }
   .demo-progress { padding-top: 16px; padding-bottom: 14px; }
   .conversation { padding-top: 5px; scroll-margin-top: 125px; }
   .intro-context { margin-bottom: 14px; }

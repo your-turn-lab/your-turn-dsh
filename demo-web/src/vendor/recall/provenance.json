@@ -1,0 +1,13 @@
+{
+  "repository": "your-turn-lab/your-turn-dsh",
+  "commit": "919f335e847eb2358379947b3571da8cf74fc884",
+  "source": "src/recall",
+  "method": "Original pure policy modules copied without code changes; fixture inputs and logical clock live in src/policy.mjs",
+  "hashNormalization": "LF line endings",
+  "sha256": {
+    "recallBudget.js": "b64966a95343eef85300fc6955188e27aa75bc88d47bd38bfd230af4d5921db9",
+    "recallPolicy.js": "c177d48d43c4790d4ac7791defe0fbff9cb2b429ba7e7cf58f67a376c6f52151",
+    "recallPreferences.js": "9ae71db25a72d232c01f30ad74eca5659eb1cfa01bec228f6e8fdf383ee0e0e0",
+    "recallScorer.js": "8b1c111d5f84d161d7cf91c9bcc52f84b1d23b091e4911b48b1f32f0765a8297"
+  }
+}

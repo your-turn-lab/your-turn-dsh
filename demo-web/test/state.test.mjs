@@ -72,7 +72,7 @@ test('double submissions do not duplicate decisions; reset clears all run state'
 });
 test('chosen alternatives and notes appear in output instead of a canned preferred answer', () => {
   let s = createState();
-  for (const a of [{ type: 'SAVE_PROFILE', answers: [0,0,0,0] }, { type: 'CONFIRM_CONTROLS' }, { type: 'SUBMIT_TASK', prompt: '测试任务' }, ...Array.from({length:4},()=>({type:'NEXT'})), { type: 'ANSWER_MAIN', choice: 1, note: '先讲痛点' }, { type: 'NEXT' }, { type: 'NEXT' }, { type: 'NEXT' }, { type: 'ANSWER_INTERACTION', choice: 1, note: '不要求公开发言' }]) s = reduce(s, a);
+  for (const a of [{ type: 'SAVE_PROFILE', answers: [1,1,1,1] }, { type: 'CONFIRM_CONTROLS' }, { type: 'SUBMIT_TASK', prompt: '测试任务' }, ...Array.from({length:4},()=>({type:'NEXT'})), { type: 'ANSWER_MAIN', choice: 1, note: '先讲痛点' }, { type: 'NEXT' }, { type: 'NEXT' }, { type: 'NEXT' }, { type: 'ANSWER_INTERACTION', choice: 1, note: '不要求公开发言' }]) s = reduce(s, a);
   assert.match(s.artifacts[0].main, /痛点/);
   assert.match(s.artifacts[0].interaction, /匿名/);
   assert.match(s.artifacts[0].notes, /不要求公开发言/);
