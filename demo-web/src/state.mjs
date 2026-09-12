@@ -1,7 +1,7 @@
 import { scenario, nodeFixtures, makeArtifact } from './scenario.mjs';
 export function createState() {
   return {
-    phase: 'onboarding', revision: 0, version: 1, nodes: [], suggestions: [], runMode: 'agent', telemetry: { lastEvent: 'session-attached' },
+    phase: 'onboarding', revision: 0, version: 1, autoIndex: 0, playbackPaused: false, nodes: [], suggestions: [], runMode: 'agent', telemetry: { lastEvent: 'session-attached' },
     taskProfile: { taskSize: 'long', participationGoal: 'balanced' }, preferenceProfile: null,
     profileDraft: { answers: [1,1,1,1], retain: scenario.retained, delegate: scenario.delegated, identity: scenario.identity },
     onboardingIndex: 0, editingPreference: false, returnPhase: null,
@@ -40,9 +40,20 @@ function outcome(s) {
 }
 export function reduce(state,action) {
   if(action.type==='RESET') return createState();
+  if(action.type==='START_DEMO') {
+    if(state.phase!=='onboarding'||state.editingPreference||!state.prompt.trim())return state;
+    const saved=reduce(state,{type:'SAVE_PROFILE'});
+    if(saved.phase!=='controls')return state;
+    return reduce(reduce(saved,{type:'CONFIRM_CONTROLS'}),{type:'SUBMIT_TASK',prompt:state.prompt});
+  }
+  if(action.type==='AUTO_TICK') {
+    if(state.playbackPaused||!scenario.playbackMs[state.phase]||action.key!==playbackKey(state))return state;
+    return reduce(state,{type:'NEXT'});
+  }
   const s=structuredClone(state);
   switch(action.type) {
-    case 'TASK_DRAFT': if(s.phase!=='task')return state; s.prompt=action.prompt; break;
+    case 'TASK_DRAFT': if(!['task','onboarding'].includes(s.phase))return state; s.prompt=action.prompt; break;
+    case 'TOGGLE_PLAYBACK': s.playbackPaused=!s.playbackPaused; break;
     case 'ANSWER_DRAFT':
       if(s.phase==='main'){s.mainChoice=action.choice??s.mainChoice;s.mainNote=action.note??s.mainNote;}
       else if(s.phase==='interaction'){s.interactionChoice=action.choice??s.interactionChoice;s.interactionNote=action.note??s.interactionNote;}
@@ -56,7 +67,7 @@ export function reduce(state,action) {
       s.profileDraft=p; s.preferenceProfile={version:1,answers:p.answers,summary:`${scenario.questions[0].options[p.answers[0]][0]} · 保留：${p.retain||scenario.retained} · 交给 AI：${p.delegate||scenario.delegated}`,profile:{preset:'demo'}};
       s.phase=s.editingPreference?s.returnPhase:'controls'; s.editingPreference=false; break;
     }
-    case 'START_PREFERENCE_ONBOARDING': s.returnPhase=s.phase; s.editingPreference=true; s.phase='onboarding'; s.onboardingIndex=0; break;
+    case 'START_PREFERENCE_ONBOARDING': if(s.editingPreference)return state; s.returnPhase=s.phase; s.editingPreference=true; s.phase='onboarding'; s.onboardingIndex=0; break;
     case 'CANCEL_PROFILE': if(!s.editingPreference)return state; s.phase=s.returnPhase; s.editingPreference=false; break;
     case 'UPDATE_TASK_PROFILE': if(!['controls','task','path'].includes(s.phase))return state; s.taskProfile={...s.taskProfile,...action.taskProfile}; break;
     case 'CONFIRM_CONTROLS': if(s.phase!=='controls')return state; s.taskProfile={taskSize:'long',participationGoal:'balanced'}; s.phase='task'; break;
@@ -78,7 +89,10 @@ export function reduce(state,action) {
       s.artifacts.push(makeArtifact(s)); s.nodes[4].substeps[1].result=s.artifacts[0].script; outcome(s); s.phase='complete';
       log(s,'Dawn',`${scenario.interactionOptions[s.interactionChoice][0]}。${s.interactionNote}`); log(s,'Your Turn','首轮任务完成。培训方案已包含你的两次判断，请验收最终成果。'); break;
     case 'ACCEPT_FINAL_RESULT': if(!['complete','updated','learning'].includes(s.phase))return state; s.finalAcceptedAt=`demo-revision-${s.version}`; break;
-    case 'CLIENT_CHANGE': if(s.phase!=='complete'||!s.finalAcceptedAt)return state; s.phase='clientChange'; log(s,'客户',scenario.clientMessage); break;
+    case 'CLIENT_CHANGE': if(s.phase!=='complete'||!s.finalAcceptedAt)return state; s.phase='clientChange'; s.nodes[2].substeps[0].instruction=scenario.revision; log(s,'客户',scenario.clientMessage); break;
+    case 'ACCEPT_AND_CONTINUE':
+      if(s.phase!=='complete')return state;
+      return reduce(reduce(s,{type:'ACCEPT_FINAL_RESULT'}),{type:'CLIENT_CHANGE'});
     case 'EDIT_INSTRUCTION': {
       const n=s.nodes.find(n=>n.id===action.nodeId); if(!n||!action.instruction?.trim())return state;
       n.instruction=action.instruction.trim(); log(s,'Dawn',`已保存「${n.title}」补充要求：${n.instruction}`); break;
@@ -95,8 +109,16 @@ export function reduce(state,action) {
     case 'LEARNING_PRESET': s.learningStage=action.stage; s.weights=[...scenario.learning[action.stage==='evolved'?'evolved':'initial']]; break;
     case 'LEARNING_WEIGHT': if(action.index<0||action.index>2||!Number.isFinite(action.value))return state; s.weights[action.index]=Math.min(100,Math.max(0,action.value));s.learningStage='custom';break;
     case 'NEXT':
-      if(s.phase==='path'){s.taskProfile={taskSize:'long',participationGoal:'balanced'};s.phase='auto';nodeStatus(s,0,'completed');log(s,'Your Turn','Auto · 资料核对、素材整理、术语检查已连续完成（演示素材）。');}
-      else if(s.phase==='auto'){s.phase='main';recall(s,1,'main');}
+      if(s.phase==='path'){
+        s.taskProfile={taskSize:'long',participationGoal:'balanced'};s.phase='auto';s.autoIndex=0;
+        s.nodes[0].status='in_progress';s.nodes[0].substeps[0].status='in_progress';
+      }
+      else if(s.phase==='auto'){
+        const n=s.nodes[0],i=s.autoIndex;
+        n.substeps[i].status='completed';n.substeps[i].result=n.results[i];s.autoIndex++;
+        if(s.autoIndex===n.substeps.length){nodeStatus(s,0,'completed');log(s,'Your Turn','资料核对、素材整理、术语检查已完成。');s.phase='main';recall(s,1,'main');}
+        else n.substeps[s.autoIndex].status='in_progress';
+      }
       else if(s.phase==='candidate'){s.phase='assessed';decision(s,3,'relation','AUTO');s.nodes[3].recallReason=scenario.policy.candidateReasons.join(' ');}
       else if(s.phase==='assessed'){s.phase='autoRelation';nodeStatus(s,3,'completed');log(s,'Your Turn','课件关系呈现评估完成：Skipped Your Turn。已有上下文充分、可逆，把参与机会留给现场互动。');}
       else if(s.phase==='autoRelation'){s.phase='interaction';recall(s,4,'interaction');}
@@ -111,6 +133,7 @@ export function reduce(state,action) {
   }
   s.revision++;return s;
 }
+export function playbackKey(s) { return `${s.phase}:${s.autoIndex}:${s.rerunIndex}`; }
 export function learningDecision(weights,tags) {
   // Absolute weighted relevance: mechanical nodes stay low even when ownership grows.
   const score=weights.reduce((sum,w,i)=>sum+w/100*tags[i],0)/1.5;

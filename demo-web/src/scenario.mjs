@@ -2,6 +2,9 @@
 export const scenario = {
   sourceCommit: '919f335e847eb2358379947b3571da8cf74fc884', sourceBranch: 'zhongkesong-p0-1-2', name: 'Dawn',
   identity: '毕业约一年 · 企业培训讲师 · 需要亲自面对客户授课',
+  opening: '这场培训要由我亲自讲。主线和现场表达，我想自己拿定；资料和课件，尽量交给你。',
+  promise: '我来推进任务，值得你判断时叫你回来。你也可以随时接手。',
+  playbackMs: { path: 1400, auto: 1100, candidate: 2800, assessed: 3600, autoRelation: 2200, rerunning: 1800 },
   prompt: '请帮我为银行客户准备一场 60 分钟的 AI 办公产品培训。我需要亲自讲授，希望有一条清楚的培训主线、一个贯穿案例、文档／表格／知识库之间的关系，以及适合现场的互动。先核对材料与术语，再产出可以用于备课的培训方案。',
   retained: '培训主线、客户语境和我在现场说得出口的表达', delegated: '资料核对、素材整理、术语检查、可逆的课件编排',
   mainNote: '后半段一定要进入团队协作和知识复用，不能停留在个人提效。', interactionNote: '自然、低压力。我不采用自己说不出口的冷幽默。',
@@ -17,7 +20,7 @@ export const scenario = {
   ],
   policy: { threshold: 0.65, maxRecall: 3,
     main: { recallValue: 0.86, autoRisk: 0.72, humanValue: 0.92 }, relation: { recallValue: 0.48, autoRisk: 0.2, humanValue: 0.76 }, interaction: { recallValue: 0.82, autoRisk: 0.6, humanValue: 0.94 },
-    candidateReasons: ['已有上下文充分：Dawn 已确定进入团队协作与知识复用。','修改可逆：关系页可以在预览后调整，不涉及对外发布。','有限打扰：把参与机会留给更依赖 Dawn 本人表达的现场互动。'],
+    candidateReasons: ['主线已明确，现有上下文足够。','关系页可以修改，调整成本低。','把注意力留给更需要你的现场表达。'],
   },
   learning: { labels: ['关键方向与结果责任','学习与专业判断','现场表达与个人偏好'], initial: [75,30,30], evolved: [80,75,90], threshold: 0.55,
     candidates: [{ title: '培训主线取舍', tags: [0.95,0.5,0.45] },{ title: '现场互动表达', tags: [0.2,0.75,1] },{ title: '课件关系排版', tags: [0.15,0.15,0.2] }],

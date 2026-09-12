@@ -9,7 +9,7 @@ function firstRun() {
   s = send(s, 'CONFIRM_CONTROLS');
   s = send(s, 'SUBMIT_TASK', { prompt: '为银行客户准备 60 分钟 AI 办公培训' });
   s = send(s, 'NEXT'); // path -> auto
-  s = send(s, 'NEXT'); // auto -> main
+  for(let i=0;i<3;i++) s = send(s, 'NEXT'); // complete three research substeps -> main
   s = send(s, 'ANSWER_MAIN', { choice: 0, note: '后半段一定要进入团队协作和知识复用' });
   return s;
 }
@@ -72,7 +72,7 @@ test('double submissions do not duplicate decisions; reset clears all run state'
 });
 test('chosen alternatives and notes appear in output instead of a canned preferred answer', () => {
   let s = createState();
-  for (const a of [{ type: 'SAVE_PROFILE', answers: [0,0,0,0] }, { type: 'CONFIRM_CONTROLS' }, { type: 'SUBMIT_TASK', prompt: '测试任务' }, { type: 'NEXT' }, { type: 'NEXT' }, { type: 'ANSWER_MAIN', choice: 1, note: '先讲痛点' }, { type: 'NEXT' }, { type: 'NEXT' }, { type: 'NEXT' }, { type: 'ANSWER_INTERACTION', choice: 1, note: '不要求公开发言' }]) s = reduce(s, a);
+  for (const a of [{ type: 'SAVE_PROFILE', answers: [0,0,0,0] }, { type: 'CONFIRM_CONTROLS' }, { type: 'SUBMIT_TASK', prompt: '测试任务' }, ...Array.from({length:4},()=>({type:'NEXT'})), { type: 'ANSWER_MAIN', choice: 1, note: '先讲痛点' }, { type: 'NEXT' }, { type: 'NEXT' }, { type: 'NEXT' }, { type: 'ANSWER_INTERACTION', choice: 1, note: '不要求公开发言' }]) s = reduce(s, a);
   assert.match(s.artifacts[0].main, /痛点/);
   assert.match(s.artifacts[0].interaction, /匿名/);
   assert.match(s.artifacts[0].notes, /不要求公开发言/);
