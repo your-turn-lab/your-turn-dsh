@@ -11,7 +11,7 @@ export function createState() {
     decisionActors: { main: 'AI', interaction: 'AI', relation: 'AI' }, audienceVariant: 'general',
     pendingDecision: null, recallState: { recallCount: 0, lastRecallAt: null }, policyNow: policyClock.initial, recallDecisions: [], outcome: null,
     finalAcceptedAt: null, clientMessageVisible: false, clientMessageDismissed: false, selectedNodeId: null, artifacts: [], revisionInstruction: '', rerunIndex: 2,
-    log: [], weights: [...scenario.learning.initial], learningStage: 'initial',
+    log: [], weights: [...scenario.learning.initial], learningStage: 'initial', learningStep: 'initial', learningRun: 0,
   };
 }
 function log(s, role, text) { s.log.push({ id: s.log.length+1, role, text }); }
@@ -144,11 +144,11 @@ export function reduce(state,action) {
       s.interactionChoice=action.choice; s.interactionNote=action.note?.trim()||''; finishInteraction(s,'Dawn'); break;
     case 'ACCEPT_FINAL_RESULT': if(!['complete','updated','learning'].includes(s.phase))return state; s.finalAcceptedAt=`demo-revision-${s.version}`; break;
     case 'CLIENT_MESSAGE':
-      if(s.phase!=='complete'||!s.finalAcceptedAt||s.clientMessageDismissed||s.clientMessageVisible)return state;
+      if(s.phase!=='complete'||s.clientMessageDismissed||s.clientMessageVisible)return state;
       if((action.version!==undefined&&action.version!==s.version)||(action.revision!==undefined&&action.revision!==s.revision))return state;
       s.clientMessageVisible=true; log(s,'客户',scenario.clientMessage); break;
-    case 'DISMISS_CLIENT_MESSAGE': s.clientMessageVisible=false; s.clientMessageDismissed=true; break;
-    case 'CLIENT_CHANGE': if(s.phase!=='complete'||!s.finalAcceptedAt)return state; s.phase='clientChange'; s.clientMessageVisible=false; s.nodes[2].substeps[0].instruction=scenario.revision; break;
+    case 'DISMISS_CLIENT_MESSAGE': if(s.phase!=='complete')return state; s.clientMessageVisible=false; s.clientMessageDismissed=true; s.phase='recap'; break;
+    case 'CLIENT_CHANGE': if(s.phase!=='complete')return state; s.phase='clientChange'; s.clientMessageVisible=false; s.clientMessageDismissed=true; s.nodes[2].substeps[0].instruction=scenario.revision; break;
     case 'ACCEPT_AND_CONTINUE':
       if(s.phase!=='complete')return state;
       return reduce(s,{type:'ACCEPT_FINAL_RESULT'});
@@ -164,8 +164,11 @@ export function reduce(state,action) {
       s.nodes[2].substeps.find(x=>x.id===action.substepId).instruction=s.revisionInstruction;
       log(s,'Dawn',`My Turn · 从这堂课的例子继续：${s.revisionInstruction}`); log(s,'Your Turn','资料和授课顺序保留；换成科技部门的例子，更新相关课件、互动和备课方案。'); break;
     }
-    case 'SHOW_LEARNING': if(!['complete','updated'].includes(s.phase))return state; s.phase='learning'; s.view='task'; s.page=0; break;
-    case 'RETURN_RECAP': if(s.phase!=='learning')return state; s.phase=s.version>1?'updated':'complete'; s.view='task'; s.page=0; break;
+    case 'SHOW_LEARNING': if(!['recap','updated'].includes(s.phase))return state; s.phase='learning'; s.view='task'; s.page=0; s.learningRun++; s.learningStep='initial'; s.learningStage='initial'; s.weights=[...scenario.learning.initial]; break;
+    case 'ADVANCE_LEARNING': if(s.phase!=='learning'||s.learningStep!=='initial'||action.run!==s.learningRun)return state; s.learningStep='moving'; s.learningStage='evolved'; s.weights=[...scenario.learning.evolved]; break;
+    case 'SETTLE_LEARNING': if(s.phase!=='learning'||s.learningStep!=='moving'||action.run!==s.learningRun)return state; s.learningStep='done'; break;
+    case 'REPLAY_LEARNING': if(s.phase!=='learning'||s.learningStep!=='done')return state; s.learningRun++; s.learningStep='initial'; s.learningStage='initial'; s.weights=[...scenario.learning.initial]; break;
+    case 'FINISH_DEMO': if(s.phase!=='learning'||s.learningStep!=='done')return state; s.phase='finished'; s.view='task'; s.page=0; s.finalAcceptedAt=`demo-revision-${s.version}`; s.clientMessageVisible=false; s.clientMessageDismissed=true; break;
     case 'LEARNING_PRESET': s.learningStage=action.stage; s.weights=[...scenario.learning[action.stage==='evolved'?'evolved':'initial']]; break;
     case 'LEARNING_WEIGHT': if(action.index<0||action.index>2||!Number.isFinite(action.value))return state; s.weights[action.index]=Math.min(100,Math.max(0,action.value));s.learningStage='custom';break;
     case 'NEXT':

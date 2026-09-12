@@ -125,7 +125,7 @@ test('critical override remains distinct from retained judgments when ordinary b
 test('acceptance finishes the primary story and customer change remains optional',()=>{
   let s=send(finish(start()),'ACCEPT_FINAL_RESULT');
   assert.equal(s.phase,'complete');assert.equal(s.clientMessageVisible,false);
-  assert.equal(send(s,'SHOW_LEARNING').phase,'learning');
+  assert.deepEqual(send(s,'SHOW_LEARNING'),s);
   assert.deepEqual(send(s,'CLIENT_MESSAGE',{version:99}),s);
   s=send(s,'CLIENT_MESSAGE',{version:s.version,revision:s.revision});
   assert.equal(s.clientMessageVisible,true);

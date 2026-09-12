@@ -90,19 +90,33 @@ test('illustrative weighting changes the future routing, independently of the fi
   assert.equal(learningDecision([90, 90, 90], [0.2, 0.9, 0.8]), 'YOUR_TURN');
 });
 
-test('recap and learning use separate pages without altering decisions or artifacts', () => {
-  const complete = completeRun();
-  const learning = send(complete, 'SHOW_LEARNING');
-  assert.equal(learning.phase, 'learning');
-  assert.deepEqual(learning.outcome, complete.outcome);
-  assert.equal(send(learning, 'ACCEPT_FINAL_RESULT').finalAcceptedAt, 'demo-revision-1');
-  assert.equal(send(learning, 'RETURN_RECAP').phase, 'complete');
-  assert.deepEqual(send(complete, 'RETURN_RECAP'), complete);
-  assert.deepEqual(send(onboard(), 'SHOW_LEARNING'), onboard());
-  let changed = send(send(complete, 'ACCEPT_FINAL_RESULT'), 'CLIENT_CHANGE');
-  changed = send(changed, 'REVISE_SUBSTEP', {nodeId:'case', substepId:'case-1', instruction:'科技部门'});
-  for(let i=0;i<4;i++) changed = send(changed, 'NEXT');
-  assert.equal(send(send(changed, 'SHOW_LEARNING'), 'RETURN_RECAP').phase, 'updated');
+test('ending proceeds from delivery through revision and animation to a stable finish', () => {
+  const complete=completeRun();
+  assert.deepEqual(send(complete,'SHOW_LEARNING'),complete,'do not skip the customer change before recap');
+  let s=send(complete,'CLIENT_MESSAGE');
+  assert.equal(s.clientMessageVisible,true);
+  assert.deepEqual(send(s,'CLIENT_MESSAGE'),s,'message appears only once');
+  s=send(s,'CLIENT_CHANGE');
+  s=send(s,'REVISE_SUBSTEP',{nodeId:'case',substepId:'case-1',instruction:'科技部门'});
+  for(let i=0;i<4;i++)s=send(s,'NEXT');
+  const artifacts=structuredClone(s.artifacts), outcome=structuredClone(s.outcome);
+  s=send(s,'SHOW_LEARNING');
+  assert.equal(s.learningStep,'initial');
+  assert.deepEqual(send(s,'FINISH_DEMO'),s,'animation must finish before exit');
+  const run=s.learningRun;
+  s=send(s,'ADVANCE_LEARNING',{run});
+  assert.equal(s.learningStep,'moving');
+  s=send(s,'SETTLE_LEARNING',{run});
+  assert.equal(s.learningStep,'done');
+  s=send(s,'REPLAY_LEARNING');
+  assert.equal(s.learningStep,'initial');
+  assert.deepEqual(send(s,'ADVANCE_LEARNING',{run}),s,'stale animation cannot advance a replay');
+  s=send(s,'ADVANCE_LEARNING',{run:s.learningRun});
+  s=send(s,'SETTLE_LEARNING',{run:s.learningRun});
+  s=send(s,'FINISH_DEMO');
+  assert.equal(s.phase,'finished');
+  assert.deepEqual(s.artifacts,artifacts);assert.deepEqual(s.outcome,outcome);
+  for(const type of ['NEXT','CLIENT_MESSAGE','SHOW_LEARNING','RETURN_RECAP','REPLAY_LEARNING','FINISH_DEMO'])assert.deepEqual(send(s,type),s,type+' cannot loop the ending');
 });
 
 test('artifact and history pages are guarded, reset pagination and preserve the task', () => {

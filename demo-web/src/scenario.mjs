@@ -94,7 +94,7 @@ export const scenario = {
   ],
   policy: {    candidateReasons: ['主线已明确，现有上下文足够。','关系页可以修改，调整成本低。','把注意力留给更需要你的现场表达。'],
   },
-  learning: { labels: ['关键方向与结果责任','学习与专业判断','现场表达与个人偏好'], initial: [75,30,30], evolved: [80,75,90], threshold: 0.55,
+  learning: { holdMs: 2000, animateMs: 1800, labels: ['把握整堂课的方向','练习讲课逻辑的判断','选择适合自己的表达'], initial: [75,30,30], evolved: [80,75,90], threshold: 0.55,
     candidates: [{ title: '培训主线取舍', tags: [0.95,0.5,0.45] },{ title: '现场互动表达', tags: [0.2,0.75,1] },{ title: '课件关系排版', tags: [0.15,0.15,0.2] }],
   },
 };
@@ -148,4 +148,3 @@ export function makeArtifact(s) {
     boundaries: '这是预设分支生成的备课草案，未执行真实检索；自由文本只记录，不会自动改写方案。演练仅用虚构办公资料，不涉及信贷决策建议。',
   };
 }
-

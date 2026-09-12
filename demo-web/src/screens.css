@@ -141,3 +141,40 @@ html, body, #app { width:100%; height:100%; margin:0; }
   .single-screen .hil-node { padding-top:9px; padding-bottom:9px; }.single-screen .hil-node-meta { margin-top:3px; }
 }
 
+/* The closing sequence has one direction and a stable end. */
+.single-screen .learning-card .Mbwy4a_body,.single-screen .recap-card .Mbwy4a_body{justify-content:flex-start}
+.learning-card .Mbwy4a_header{padding-bottom:8px}
+.time-transition{display:flex;align-items:center;gap:14px;margin:2px 0 16px;color:#a1a1aa;font-size:16px}
+.time-transition .active{color:#414149;font-weight:600}.time-line{height:1px;width:40px;background:#ceced5}
+.learning-context{min-height:48px;color:#7e7e88;font-size:15px}
+.animated-weights{display:grid;gap:23px;padding:3px 1px 10px}
+.weight-caption{display:flex;justify-content:space-between;align-items:center;gap:12px;font-size:15px;margin-bottom:13px}
+.weight-caption b{color:#94949d;font-size:14px;font-weight:400}
+.weight-track{height:9px;background:#e6e6e9;border-radius:8px}
+.weight-track>span{position:relative;display:block;height:100%;border-radius:8px;background:#777780;transition:width 1.8s cubic-bezier(.3,.05,.2,1)}
+.weight-track i{position:absolute;width:17px;height:17px;right:-8px;top:-4px;background:#777780;border-radius:50%}
+.animation-result{opacity:.25;transition:opacity .5s;margin-top:26px;gap:10px}.animation-result.settled{opacity:1}.animation-result strong{font-size:15px}
+.ready-card{position:relative}.ready-card .Mbwy4a_body,.finished-card .Mbwy4a_body{align-items:center;text-align:center}
+.delivery-check{display:grid;place-items:center;width:65px;height:65px;border-radius:50%;background:#edf5df;color:#7cb518;font-size:32px;margin-bottom:20px}
+.ready-card .Mbwy4a_body h3,.finished-card .Mbwy4a_body h3{font-size:21px;color:#414149;margin-bottom:12px}
+.customer-notification{position:absolute;z-index:3;top:50%;left:50%;transform:translate(-50%,-50%);width:calc(100% - 42px);max-width:440px;border-radius:18px;padding:20px 22px;text-align:left;background:#fff;border:1px solid #e2e5df;box-shadow:0 12px 55px #151c202b;animation:notification-arrive .5s ease-out}
+.has-notification .delivery-check,.has-notification .Mbwy4a_body>h3,.has-notification .Mbwy4a_body>p{opacity:.16}
+.notification-top{display:flex;align-items:center;gap:10px;margin-bottom:17px}.notification-top strong{font-size:15px}.notification-top small{font-size:12px;color:#9c9ca5;margin-left:auto}.chat-mark{display:grid;place-items:center;width:33px;height:29px;border-radius:9px;background:#e8f1df;color:#5b7f35;font-size:25px;line-height:1;padding-bottom:12px}
+.customer-notification p{font-size:17px;line-height:1.85;margin:0 0 17px;color:#3f4544}
+.notification-reaction{font:17px/1.7 'STZhongsong','华文中宋','Songti SC',serif;color:#8b8b94;margin-bottom:20px}
+.customer-notification .action{min-height:46px;padding:11px 17px;font-size:15px;width:100%}
+.precise-edit{margin:8px 0 20px;font-size:16px;line-height:1.85;border-left:2px solid #b8b8c0}
+.recap-card .recap-total{font-size:14px;color:#8b8b94;margin-bottom:22px}.recap-card .recap-impact{gap:20px}.recap-card .recap-impact h3{font-size:17px!important}.recap-card .recap-impact p{font-size:14px}
+.ending-note{color:#96969f;font-size:14px}.phase-finished .hil-root{display:none}.single-screen.phase-finished .workspace{margin-right:0}
+@keyframes notification-arrive{from{opacity:0;transform:translate(-50%,calc(-50% - 18px)) scale(.97)}to{opacity:1;transform:translate(-50%,-50%) scale(1)}}
+@media(max-width:700px){
+.learning-card .Mbwy4a_title,.recap-card .Mbwy4a_title{font-size:21px}.learning-card .Mbwy4a_body{padding-top:10px}.time-transition{font-size:15px;margin-bottom:14px}.learning-context{font-size:14px;min-height:46px}
+.animated-weights{gap:22px}.weight-caption{font-size:14px;margin-bottom:12px}.animation-result{margin-top:24px}.animation-result strong{font-size:14px}
+.customer-notification{padding:19px;width:calc(100% - 26px)}.customer-notification p{font-size:16px}.notification-reaction{font-size:16px}
+.ready-card .Mbwy4a_body h3,.finished-card .Mbwy4a_body h3{font-size:18px}.precise-edit{font-size:15px;padding:14px}
+.recap-card .recap-total{font-size:13px;margin-bottom:15px}.recap-card .recap-impact{gap:16px}.recap-card .recap-impact h3{font-size:16px!important}.recap-card .recap-impact p{font-size:13px}
+}
+@media(max-height:740px){
+.learning-card .Mbwy4a_header{padding-bottom:2px}.learning-card .Mbwy4a_body{padding-top:8px}.time-transition{margin-bottom:10px}.learning-context{margin-bottom:11px!important;font-size:14px}.animated-weights{gap:15px;padding-bottom:4px}.weight-caption{font-size:14px;margin-bottom:10px}.animation-result{margin-top:20px;gap:7px}
+.recap-card .recap-total{margin-bottom:14px}.recap-card .recap-impact{gap:12px}.recap-card .quiet-result{margin-top:11px;padding:10px;font-size:13px}
+}
