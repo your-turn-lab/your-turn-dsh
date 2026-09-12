@@ -2,7 +2,8 @@ import { scenario, nodeFixtures, makeArtifact } from './scenario.mjs';
 import { evaluateCandidate, normalizeTaskProfile, preferenceFromAnswers, policyClock } from './policy.mjs';
 export function createState() {
   return {
-    phase: 'onboarding', revision: 0, version: 1, autoIndex: 0, playbackPaused: false, nodes: [], suggestions: [], runMode: 'agent', telemetry: { lastEvent: 'session-attached' },
+    phase: 'install', revision: 0, version: 1, autoIndex: 0, playbackPaused: false, nodes: [], suggestions: [], runMode: 'agent', telemetry: { lastEvent: 'session-attached' },
+    retainedJudgments: { main: true }, view: 'task', page: 0, artifactVersion: 1,
     taskProfile: { taskSize: 'long', participationGoal: 'balanced' }, preferenceProfile: null,
     profileDraft: { answers: [1,1,1,1], retain: scenario.retained, delegate: scenario.delegated, identity: scenario.identity },
     onboardingIndex: 0, editingPreference: false, returnPhase: null,
@@ -84,11 +85,29 @@ export function reduce(state,action) {
     return reduce(reduce(saved,{type:'CONFIRM_CONTROLS'}),{type:'SUBMIT_TASK',prompt:state.prompt});
   }
   if(action.type==='AUTO_TICK') {
-    if(state.playbackPaused||!scenario.playbackMs[state.phase]||action.key!==playbackKey(state))return state;
+    if(state.playbackPaused||state.view!=='task'||!scenario.playbackMs[state.phase]||action.key!==playbackKey(state))return state;
     return reduce(state,{type:'NEXT'});
   }
   const s=structuredClone(state);
   switch(action.type) {
+    case 'INSTALL_PLUGIN': if(s.phase!=='install')return state; s.phase='installing'; break;
+    case 'SET_RETAIN_MAIN':
+      if(['install','installing'].includes(s.phase)||typeof action.value!=='boolean')return state;
+      s.retainedJudgments.main=action.value; break;
+    case 'OPEN_VIEW':
+      if(!['task','artifact','history'].includes(action.view))return state;
+      if(action.view==='artifact'&&!s.artifacts.length)return state;
+      if(action.view==='history'&&!s.log.length)return state;
+      s.view=action.view; s.page=0;
+      if(action.view==='artifact')s.artifactVersion=s.artifacts.at(-1).version;
+      break;
+    case 'CLOSE_VIEW': s.view='task'; s.page=0; break;
+    case 'VIEW_PAGE':
+      if(s.view==='task'||!Number.isInteger(action.page)||action.page<0)return state;
+      s.page=action.page; break;
+    case 'VIEW_ARTIFACT_VERSION':
+      if(s.view!=='artifact'||!s.artifacts.some(a=>a.version===action.version))return state;
+      s.artifactVersion=action.version; s.page=0; break;
     case 'TASK_DRAFT': if(!['task','onboarding'].includes(s.phase))return state; s.prompt=action.prompt; break;
     case 'TOGGLE_PLAYBACK': s.playbackPaused=!s.playbackPaused; break;
     case 'ANSWER_DRAFT':
@@ -97,15 +116,16 @@ export function reduce(state,action) {
       else if(s.phase==='relation'){s.relationChoice=action.choice??s.relationChoice;s.relationNote=action.note??s.relationNote;}
       else return state;
       break;
-    case 'PROFILE_DRAFT': s.profileDraft={...s.profileDraft,...action.patch}; break;
-    case 'ONBOARD_PAGE': s.onboardingIndex=Math.max(0,Math.min(4,action.index)); break;
+    case 'PROFILE_DRAFT': if(['install','installing'].includes(s.phase))return state; s.profileDraft={...s.profileDraft,...action.patch}; break;
+    case 'ONBOARD_PAGE': if(s.phase!=='onboarding')return state; s.onboardingIndex=Math.max(0,Math.min(4,action.index)); break;
     case 'SAVE_PROFILE': {
+      if(s.phase!=='onboarding')return state;
       const p={...s.profileDraft,...action}; delete p.type;
       if(!Array.isArray(p.answers)||p.answers.length!==4||p.answers.some(x=>!Number.isInteger(x)||x<0||x>2)) return state;
       s.profileDraft=p; s.preferenceProfile=preferenceFromAnswers(p.answers);
       s.phase=s.editingPreference?s.returnPhase:'controls'; s.editingPreference=false; break;
     }
-    case 'START_PREFERENCE_ONBOARDING': if(s.editingPreference)return state; s.returnPhase=s.phase; s.editingPreference=true; s.phase='onboarding'; s.onboardingIndex=0; break;
+    case 'START_PREFERENCE_ONBOARDING': if(s.editingPreference||['install','installing','onboarding'].includes(s.phase))return state; s.returnPhase=s.phase; s.editingPreference=true; s.phase='onboarding'; s.onboardingIndex=0; break;
     case 'CANCEL_PROFILE': if(!s.editingPreference)return state; s.phase=s.returnPhase; s.editingPreference=false; break;
     case 'UPDATE_TASK_PROFILE': s.taskProfile=normalizeTaskProfile({...s.taskProfile,...action.taskProfile}); break;
     case 'CONFIRM_CONTROLS': if(s.phase!=='controls')return state; s.phase='task'; break;
@@ -144,11 +164,13 @@ export function reduce(state,action) {
       s.nodes[2].substeps.find(x=>x.id===action.substepId).instruction=s.revisionInstruction;
       log(s,'Dawn',`My Turn · 从这堂课的例子继续：${s.revisionInstruction}`); log(s,'Your Turn','资料和授课顺序保留；换成科技部门的例子，更新相关课件、互动和备课方案。'); break;
     }
-    case 'SHOW_LEARNING': if(!['complete','updated'].includes(s.phase))return state; s.phase='learning'; break;
+    case 'SHOW_LEARNING': if(!['complete','updated'].includes(s.phase))return state; s.phase='learning'; s.view='task'; s.page=0; break;
+    case 'RETURN_RECAP': if(s.phase!=='learning')return state; s.phase=s.version>1?'updated':'complete'; s.view='task'; s.page=0; break;
     case 'LEARNING_PRESET': s.learningStage=action.stage; s.weights=[...scenario.learning[action.stage==='evolved'?'evolved':'initial']]; break;
     case 'LEARNING_WEIGHT': if(action.index<0||action.index>2||!Number.isFinite(action.value))return state; s.weights[action.index]=Math.min(100,Math.max(0,action.value));s.learningStage='custom';break;
     case 'NEXT':
-      if(s.phase==='path'){
+      if(s.phase==='installing')s.phase='onboarding';
+      else if(s.phase==='path'){
         s.phase='auto';s.autoIndex=0;
         s.nodes[0].status='in_progress';s.nodes[0].substeps[0].status='in_progress';
       }

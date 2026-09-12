@@ -10,7 +10,7 @@ export function mountPlugin(store) {
     if (endpoint !== 'dispatch') return { ok: false, error: { message: '此演示只提供本地任务状态。' } };
     const s = store.getSnapshot();
     if (action.type === 'REVISE_SUBSTEP' && (s.phase !== 'clientChange' || action.nodeId !== 'case')) {
-      return { ok: false, error: { message: '此固定情境在首轮验收、客户变更后，演示从「贯穿案例」进入 My Turn。其他节点可查看，尚未配置重做分支。' } };
+      return { ok: false, error: { message: '此固定情境在首轮验收、客户变更后，演示从「课堂用什么例子」进入 My Turn。其他节点可查看，尚未配置重做分支。' } };
     }
     return { ok: true, value: store.dispatch(action) };
   };
@@ -25,3 +25,4 @@ export function openPath() {
   // Use the plugin's own launcher behavior; do not fork its private component code.
   document.querySelector('.hil-launcher')?.click();
 }
+

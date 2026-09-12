@@ -4,7 +4,7 @@ export const scenario = {
   identity: '毕业约一年 · 企业培训讲师 · 需要亲自面对客户授课',
   opening: '这场培训要由我亲自讲。主线和现场表达，我想自己拿定；资料和课件，尽量交给你。',
   promise: '我来推进任务，值得你判断时叫你回来。你也可以随时接手。',
-  playbackMs: { path: 1400, auto: 1100, autoMain: 1800, autoInteraction: 1800, candidate: 2800, assessed: 3600, autoRelation: 2200, rerunning: 1800 },
+  playbackMs: { installing: 2600, path: 4000, auto: 3800, autoMain: 4000, autoInteraction: 4000, candidate: 5000, assessed: 5500, autoRelation: 3800, rerunning: 3500 },
   prompt: '请帮我为银行客户准备一场 60 分钟的 AI 办公产品培训。我需要亲自讲授，希望有一条清楚的培训主线、一个贯穿案例、文档／表格／知识库之间的关系，以及适合现场的互动。先核对材料与术语，再产出可以用于备课的培训方案。',
   retained: '培训主线、客户语境和我在现场说得出口的表达', delegated: '资料核对、素材整理、术语检查、可逆的课件编排',
   mainNote: '后半段一定要进入团队协作和知识复用，不能停留在个人提效。', interactionNote: '自然、低压力。我不采用自己说不出口的冷幽默。',
@@ -148,3 +148,4 @@ export function makeArtifact(s) {
     boundaries: '这是预设分支生成的备课草案，未执行真实检索；自由文本只记录，不会自动改写方案。演练仅用虚构办公资料，不涉及信贷决策建议。',
   };
 }
+

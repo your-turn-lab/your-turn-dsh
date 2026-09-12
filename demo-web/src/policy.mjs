@@ -19,6 +19,12 @@ export function preferenceFromAnswers(answers) {
 }
 
 export function evaluateCandidate(state, key, now = state.policyNow) {
-  return decideRecall({ candidate: candidates[key], taskProfile: state.taskProfile,
+  const result = decideRecall({ candidate: candidates[key], taskProfile: state.taskProfile,
     preferenceProfile: state.preferenceProfile, sessionRecallState: state.recallState, now });
+  // Demo wrapper: Dawn's explicit instruction outranks the default interruption
+  // budget for this judgment. This is not a risk override in the plugin policy.
+  if (key === 'main' && state.retainedJudgments?.main === true) {
+    return { ...result, action: 'RECALL', reason: 'explicit_user_retention' };
+  }
+  return result;
 }

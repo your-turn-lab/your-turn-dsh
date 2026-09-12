@@ -1,66 +1,68 @@
-# Your Turn · Dawn 交互 Demo
+# YourTurn · Dawn 交互 Demo
 
-公开体验：[your-turn-demo.vercel.app](https://your-turn-demo.vercel.app)。无需登录，可在电脑和手机浏览器打开。
+赛事创空间：[paperdinosaur/yourturn-demo](https://modelscope.cn/studios/paperdinosaur/yourturn-demo)。提交前须确认状态为 **Running** 并完成匿名访问测试。Vercel 仅作备用，不能保证国内微信可达。
 
-Dawn 要为银行客户准备一场 60 分钟 AI 办公培训。Your Turn 把培训主线留给她练习判断，把现场互动留给她选择适合自己的表达，其余工作继续 Auto。
+YourTurn 是 DeepSeek Harness 插件：Agent 继续执行，把值得用户参与的判断留给本人。Dawn 是毕业约一年的企业培训讲师，这次为银行客户准备 60 分钟 AI 办公培训。
 
-这是同一仓库内可独立运行的 Web Demo，使用 React、esbuild 和本地状态，不需要 API key。真实 DSH 插件保留为产品实现与源码证据；Demo 复用它的界面和召回策略纯函数，通过预设情境展示完整体验。
+本目录是独立 Web Demo，使用 React、esbuild 和本地状态，不调用 DSH runtime 或模型，不需要 API key。复用真实插件的路径、卡片与编辑器，以及召回策略纯函数；不改动真实插件代码。
 
 ## 本地运行
 
-使用 Node.js 22 或更新版本，在 **`demo-web/` 目录内**执行：
+使用 Node.js 22 或更新版本，在 `demo-web/` 内执行：
 
 ```sh
 npm ci --workspaces=false
 npm run dev
 ```
 
-打开 `http://127.0.0.1:4173/`。可通过 `PORT` 环境变量更换端口。`npm run build` 生成 `dist/`；刷新页面或点击「重新开始」可重置本次体验。
+打开 `http://127.0.0.1:4173/`。`PORT` 可更换端口。`npm run build` 生成 `dist/`。刷新或点击「重新开始」可清空本次状态。
 
-## 连接 Vercel
+## 魔搭部署
 
-当前生产版由 Vercel CLI 发布。若从 GitHub 新建项目，导入 `your-turn-lab/your-turn-dsh` 并使用以下设置：
+使用 **公开 Static 创空间**。本地 build 后，把 `dist/` 里的 `index.html`、`app.js`、`app.css`、`dawn.png` 放到创空间仓库根目录，启动文件为 `index.html`；不要上传外层 `dist` 目录或整个源码仓库。平台不执行 npm build。本应用无需付费硬件和任何运行密钥。
 
-| 设置 | 值 |
+Git 发布使用创空间自己的独立仓库和默认 `master` 分支，不改真实插件仓库的 remote。发布凭证仅在本机安全配置，不写到代码或 Git remote，也不发送到聊天。
+
+部署后检查 Running、匿名打开创空间及应用直达页、所有静态资源、电脑与手机交互。二维码面向手机微信时，还需本人关闭代理用真实微信扫码确认；模拟触屏不等于微信网络实测。
+
+## 体验与测试方式
+
+1. 点击「启用 YourTurn」了解插件作用，认识 Dawn，选择参与模式，开始备课。
+2. 资料核对逐步 Auto 推进，可暂停或回看。讲课逻辑默认每次留给 Dawn；在「参与设置」中可取消这一明确偏好。
+3. 选择不同主线。工具关系节点先出现候选，再按策略决定邀请或继续 Auto。平衡模式默认不打扰；练习判断默认保留这一机会。
+4. 选择现场互动，自动进入参与回顾。查看培训方案的四个分页，验证议程与表达确实跟随选项变化。
+5. 下一页体验熟悉 Dawn 后的判断分配，确认「这版可以去备课了」。随后客户消息带来可选 My Turn 支线：在路径的「课堂用什么例子」修改，从这里重做，比较 V1/V2。
+
+主要页面使用单屏布局，长方案和历史单独分页。安装效果仅发生在本地 Demo，不会给真实 Agent 安装插件。
+
+## 哪些变化实际发生
+
+- **不同参与方式改变邀请次数。** 默认偏好、长任务、保留讲课逻辑时，快速完成／平衡模式／练习判断分别为 1／2／3 次。明确保留优先于普通预算；取消保留后恢复原策略。其他设置会改变实际次数，不能承诺固定数字。
+- **选项改变产物。** 三种主线、三种互动、两类听众、两种工具关系呈现，共 36 组预设组合；议程都为 60 分钟，案例、讲稿和课件顺序随选择变化。
+- **文字是备注。** 自由输入会保存和导出，不作模型语义理解。My Turn 客户变更使用已配置的科技部门分支。
+- **长期权重可交互，但不是实测。** 预设或滑块会改变未来路由，用来解释机制，不代表已积累真实长期反馈或自动学习。
+
+候选标签、任务上下文和逻辑时钟由情境提供；除明确保留规则外，召回使用真实插件的纯策略函数。完整 Agent 不保证每次选择相同节点。
+
+## 数据与参赛证据边界
+
+Dawn 画像来自访谈的脱敏情境改编，公开产物不包含原始访谈、真实公司或受访者姓名。银行任务素材为虚构示例；它与科技部门分支不是两家真实公司的对照实测。
+
+本 Demo 的可运行分支和单元测试不能替代赛事要求的完整 DSH 实际运行、第二份真实脱敏数据对照与真实用户反馈。需用真实插件另行完成并保留证据，不将预设结果冒充实时模型输出。
+
+## 实现与替换
+
+| 文件 | 内容 |
 | --- | --- |
-| Root Directory | **`demo-web`** |
-| Framework Preset | **Other** |
-| Install Command | `npm ci --workspaces=false` |
-| Build Command | `npm run build` |
-| Output Directory | `dist` |
-| Node.js | 22.x 或更新的受支持版本 |
-| 环境变量 | 无需设置 |
+| `src/copy.mjs`、`public/dawn.png` | 人物与叙事 |
+| `src/scenario.mjs` | 任务、节点、选项、模板和播放时长 |
+| `src/policy.mjs` | 真实策略连接与明确保留规则 |
+| `src/state.mjs` | 集中的状态、偏好、分页和版本 |
+| `src/app.jsx`、`src/styles.css`、`src/screens.css` | 单屏体验与原产品视觉适配 |
+| `src/plugin-adapter.jsx` | 原 UI 到本地状态的连接 |
+| `src/vendor/` | 原 UI、策略纯函数、来源和许可证 |
 
-`vercel.json` 已包含构建命令和输出目录。确认 Production Branch 指向包含 Demo 的分支；无需执行仓库根目录的 pnpm 命令，也不需要 Root Directory 以外的文件。
-
-部署后，用未登录的浏览器窗口检查公开链接，确保评委无需登录 Vercel 即可访问。相关设置见 [Vercel 构建配置](https://vercel.com/docs/builds/configure-a-build) 与 [Deployment Protection](https://vercel.com/docs/deployment-protection)。
-
-当前 GitHub 自动部署尚未连接：需要项目所有者在 Vercel 添加 GitHub Login Connection，再授权此仓库。此前仍可使用 CLI 发布 `zhongkesong-p0-1-2` 分支的更新。
-
-## 选择会怎样影响结果
-
-- **任务模式实际参与召回判断。** 在默认长任务和默认偏好下，快速完成、平衡模式、练习判断分别产生 1、2、3 次邀请；修改个人偏好后，次数可能变化。每次判断采用真实插件的召回策略纯函数，候选标签、上下文和逻辑时钟由 Demo 提供。
-- **选项实际改变培训方案。** 三种培训主线、三种互动方式、两类客户和两种关系呈现组合成 36 组预设方案，议程总时长均为 60 分钟。选择会改变议程、案例或讲稿；自由文字会记录为待人工应用的要求，不会被模型自动理解。
-- **Auto 连续推进。** 培训主线邀请强调 Dawn 想培养的讲课逻辑，现场互动邀请关注她的表达风格与客户情境。其他节点按当前策略继续执行；可暂停、回看，也可查看为什么某个候选没有召回。
-- **My Turn 是可选支线。** 验收首轮结果后，客户消息带来新的授课对象要求。Dawn 可以从任务路径中的案例节点修改，保留前面的判断并更新后续内容，也可以结束体验。
-- **长期变化是示意。** 权重调整会改变图中的未来路由，用于解释个体化判断分配；这不代表已经完成长期实测或自动学习。
-
-## 实现与替换位置
-
-| 文件 | 用途 |
-| --- | --- |
-| `src/copy.mjs`、Dawn 画像资源 | 人物介绍与界面文案；公开版本不包含采访原稿、真实公司或受访者姓名 |
-| `src/scenario.mjs` | 任务要求、节点、选项、方案模板、播放节奏 |
-| `src/policy.mjs` | 情境输入与真实召回策略的连接 |
-| `src/state.mjs` | 集中的状态流、偏好、判断、节点状态和成果版本 |
-| `src/app.jsx`、`src/styles.css` | 聊天界面、画像页、进度与交互样式 |
-| `src/plugin-adapter.jsx` | 原插件 UI 与本地 `state` / `dispatch` 的桥接 |
-| `src/vendor/` | 原插件 UI、召回策略纯函数、来源记录与许可证 |
-| `scripts/build.mjs` | 独立构建和依赖边界检查 |
-
-`src/vendor/plugin-client.jsx` 保留真实插件的浮动任务路径、节点卡片、抽屉、编辑器和结果视图；问题卡片样式来自固定版本的 DSH 客户端。当前邀请统一显示 Your Turn，邀请理由写在具体任务中，不使用旧的召回分类。Demo 的字体、点击引导和外围页面使用独立样式，未修改真实插件源码、根目录依赖或运行配置。
-
-UI 与策略快照的来源和校验值记录在 `src/vendor/` 中。后续同步真实产品时，更新对应快照与来源记录，核对适配器状态格式，再运行验证。不要直接从仓库父目录导入源码或引入 DSH runtime，以保持 `demo-web/` 可以单独部署。
+保留 vendor 校验值；更新真实 UI 时同步对应快照与来源记录后再验证。不从父目录导入代码，不引入 DSH runtime。
 
 ## 验证
 
@@ -70,6 +72,12 @@ npx playwright install chromium --only-shell
 npm run test:browser
 ```
 
-单元检查覆盖状态流、模式和选项变化、播放控制及源码隔离；浏览器检查验证可点击流程、节点编辑、结果和布局。浏览器测试使用独立的无头 Chromium，可通过 `PORT` 指定端口。截图与构建依赖清单输出到已忽略的 `verification/` 目录。
+单元测试覆盖 36 组方案、明确保留规则、模式预算、播放、分页、版本和源码隔离。浏览器检查覆盖完整点击和触屏操作、1280×720 桌面与 360×800／390×844 手机主页面无纵向滚动。截图保存在忽略提交的 `verification/` 中。
 
-若验证线上版本，先设置 `DEMO_BASE_URL=https://your-turn-demo.vercel.app`，再运行 `npm run test:browser`；此时不会启动本地服务器。检查包括无登录访问和 360 / 390 宽度触屏模拟，不等于所有实体手机与 Safari 的实机测试。
+线上测试设置 `DEMO_BASE_URL` 为应用直达 URL 后运行 `npm run test:browser`，不使用带外层导航的创空间页面。测试不会附着用户登录浏览器。
+
+## Vercel 备用
+
+Root Directory：`demo-web`；Framework：Other；Install：`npm ci --workspaces=false`；Build：`npm run build`；Output：`dist`。无环境变量。可用 CLI 发布；当前 GitHub 自动部署未关联。
+
+备用地址：https://your-turn-demo.vercel.app 。公开免登录不代表国内网络或微信必然可达，赛事仍提交魔搭入口。

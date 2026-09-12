@@ -3,8 +3,9 @@ import assert from 'node:assert/strict';
 import { createState, reduce, learningDecision } from '../src/state.mjs';
 
 const send = (s, type, values = {}) => reduce(s, { type, ...values });
+const onboard = () => send(send(createState(), 'INSTALL_PLUGIN'), 'NEXT');
 function firstRun() {
-  let s = createState();
+  let s = onboard();
   s = send(s, 'SAVE_PROFILE', { answers: [1, 1, 1, 1], retain: '教学主线和表达方式', delegate: '素材整理', identity: '企业培训讲师' });
   s = send(s, 'CONFIRM_CONTROLS');
   s = send(s, 'SUBMIT_TASK', { prompt: '为银行客户准备 60 分钟 AI 办公培训' });
@@ -20,11 +21,18 @@ function completeRun() {
   s = send(s, 'NEXT'); // -> interaction
   return send(s, 'ANSWER_INTERACTION', { choice: 0, note: '自然、低压力，不讲说不出口的冷幽默' });
 }
-test('starts with onboarding and rejects skipping decisions', () => {
+test('plugin activation is required before meeting Dawn and starting the task', () => {
   const s = createState();
-  assert.equal(s.phase, 'onboarding');
-  assert.equal(send(s, 'NEXT').phase, 'onboarding');
-  assert.equal(send(s, 'ANSWER_MAIN', { choice: 0 }).phase, 'onboarding');
+  assert.equal(s.phase, 'install');
+  for (const type of ['NEXT', 'START_DEMO', 'SAVE_PROFILE', 'START_PREFERENCE_ONBOARDING']) {
+    assert.deepEqual(send(s, type), s, `${type} cannot bypass activation`);
+  }
+  const installing = send(s, 'INSTALL_PLUGIN');
+  assert.equal(installing.phase, 'installing');
+  assert.deepEqual(send(installing, 'INSTALL_PLUGIN'), installing);
+  assert.deepEqual(send(installing, 'START_DEMO'), installing);
+  assert.equal(send(installing, 'NEXT').phase, 'onboarding');
+  assert.equal(send(send(installing, 'NEXT'), 'RESET').phase, 'install');
 });
 test('candidate is visible before evaluation and does not consume a recall', () => {
   let s = firstRun();
@@ -71,7 +79,7 @@ test('double submissions do not duplicate decisions; reset clears all run state'
   assert.deepEqual(send(s, 'RESET'), createState());
 });
 test('chosen alternatives and notes appear in output instead of a canned preferred answer', () => {
-  let s = createState();
+  let s = onboard();
   for (const a of [{ type: 'SAVE_PROFILE', answers: [1,1,1,1] }, { type: 'CONFIRM_CONTROLS' }, { type: 'SUBMIT_TASK', prompt: '测试任务' }, ...Array.from({length:4},()=>({type:'NEXT'})), { type: 'ANSWER_MAIN', choice: 1, note: '先讲痛点' }, { type: 'NEXT' }, { type: 'NEXT' }, { type: 'NEXT' }, { type: 'ANSWER_INTERACTION', choice: 1, note: '不要求公开发言' }]) s = reduce(s, a);
   assert.match(s.artifacts[0].main, /痛点/);
   assert.match(s.artifacts[0].interaction, /匿名/);
@@ -80,4 +88,41 @@ test('chosen alternatives and notes appear in output instead of a canned preferr
 test('illustrative weighting changes the future routing, independently of the fixed run', () => {
   assert.equal(learningDecision([10, 10, 10], [0.2, 0.9, 0.8]), 'AUTO');
   assert.equal(learningDecision([90, 90, 90], [0.2, 0.9, 0.8]), 'YOUR_TURN');
+});
+
+test('recap and learning use separate pages without altering decisions or artifacts', () => {
+  const complete = completeRun();
+  const learning = send(complete, 'SHOW_LEARNING');
+  assert.equal(learning.phase, 'learning');
+  assert.deepEqual(learning.outcome, complete.outcome);
+  assert.equal(send(learning, 'ACCEPT_FINAL_RESULT').finalAcceptedAt, 'demo-revision-1');
+  assert.equal(send(learning, 'RETURN_RECAP').phase, 'complete');
+  assert.deepEqual(send(complete, 'RETURN_RECAP'), complete);
+  assert.deepEqual(send(onboard(), 'SHOW_LEARNING'), onboard());
+  let changed = send(send(complete, 'ACCEPT_FINAL_RESULT'), 'CLIENT_CHANGE');
+  changed = send(changed, 'REVISE_SUBSTEP', {nodeId:'case', substepId:'case-1', instruction:'科技部门'});
+  for(let i=0;i<4;i++) changed = send(changed, 'NEXT');
+  assert.equal(send(send(changed, 'SHOW_LEARNING'), 'RETURN_RECAP').phase, 'updated');
+});
+
+test('artifact and history pages are guarded, reset pagination and preserve the task', () => {
+  const initial = onboard();
+  assert.deepEqual(send(initial, 'OPEN_VIEW', {view:'artifact'}), initial);
+  assert.deepEqual(send(initial, 'OPEN_VIEW', {view:'history'}), initial);
+  const complete = completeRun();
+  let viewed = send(complete, 'OPEN_VIEW', {view:'artifact'});
+  assert.equal(viewed.view, 'artifact');
+  assert.equal(viewed.page, 0);
+  viewed = send(viewed, 'VIEW_PAGE', {page:2});
+  assert.equal(viewed.page, 2);
+  for(const page of [-1, 0.5, NaN, '3']) assert.deepEqual(send(viewed, 'VIEW_PAGE', {page}), viewed);
+  assert.deepEqual(send(viewed, 'VIEW_ARTIFACT_VERSION', {version:99}), viewed);
+  viewed = send(viewed, 'OPEN_VIEW', {view:'history'});
+  assert.equal(viewed.page, 0);
+  assert.equal(viewed.phase, 'complete');
+  assert.deepEqual(viewed.outcome, complete.outcome);
+  viewed = send(viewed, 'CLOSE_VIEW');
+  assert.equal(viewed.view, 'task');
+  assert.equal(viewed.page, 0);
+  assert.deepEqual(send(viewed, 'VIEW_PAGE', {page:2}), viewed);
 });
