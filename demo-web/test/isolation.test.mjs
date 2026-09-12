@@ -11,10 +11,11 @@ test('learning presets demonstrate a changed decision without recalling mechanic
   assert.equal(learningDecision(evolved,candidates[1].tags),'YOUR_TURN');
   assert.equal(learningDecision(evolved,candidates[2].tags),'AUTO');
 });
-test('vendored plugin UI retains the pinned source bytes', async () => {
+test('vendored plugin UI retains the pinned source across Git line-ending conversions', async () => {
   const metadata=JSON.parse(await readFile(new URL('../src/vendor/provenance.json',import.meta.url),'utf8'));
-  const source=await readFile(new URL('../src/vendor/plugin-client.jsx',import.meta.url));
-  assert.equal(createHash('sha256').update(source).digest('hex'),metadata.pluginSha256);
+  const source=await readFile(new URL('../src/vendor/plugin-client.jsx',import.meta.url),'utf8');
+  const normalized=source.replace(/\r\n/g,'\n');
+  assert.equal(createHash('sha256').update(normalized).digest('hex'),metadata.pluginSha256);
 });
 test('demo dependencies contain no DSH runtime or parent workspace reference', async () => {
   const p=JSON.parse(await readFile(new URL('../package.json',import.meta.url),'utf8'));
