@@ -154,3 +154,11 @@ for(const size of [{width:1280,height:720},{width:1024,height:680},{width:390,he
     }finally{await context.close();}
   });
 }
+
+test('learning result stays above footer in short embedded viewport',async({page})=>{
+ test.setTimeout(90000);await page.setViewportSize({width:1280,height:600});await page.clock.install();await start(page);await toMain(page);await answer(page);await toInteraction(page);await answer(page);await revise(page);
+ await page.getByRole('button',{name:'用一个月后呢？ →',exact:true}).click();await page.clock.runFor(4100);
+ const bounds=await page.locator('.learning-card').evaluate(card=>({result:card.querySelector('.animation-result').getBoundingClientRect().bottom,footer:card.querySelector('.Mbwy4a_footer').getBoundingClientRect().top}));
+ expect(bounds.result).toBeLessThanOrEqual(bounds.footer-8);
+ await fits(page,'embedded-learning');await page.screenshot({animations:'disabled',path:'verification/learning-embedded-600.png'});
+});

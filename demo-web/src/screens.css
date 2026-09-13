@@ -196,3 +196,15 @@ html, body, #app { width:100%; height:100%; margin:0; }
 .host-whale { width:44px; height:36px; }
 .single-screen .brand-context { display:inline-flex; align-items:center; gap:7px; }
 @media(max-width:850px) { .single-screen .brand-context { display:none; } }
+
+/* Compact the learning summary inside embedded Studio viewports; reserve the footer. */
+.learning-card .Mbwy4a_body > * { flex-shrink:0; }
+@media(max-height:740px) {
+ .learning-card .learning-context { min-height:0; line-height:1.5; margin-bottom:12px!important; }
+ .learning-card .animated-weights { gap:12px; padding-bottom:4px; }
+ .learning-card .weight-caption { margin-bottom:8px; }
+ .learning-card .animation-result { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); margin-top:14px; gap:10px; }
+ .learning-card .animation-result > div { flex-direction:column; align-items:flex-start; gap:5px; }
+ .learning-card .animation-result strong { font-size:13px; line-height:1.4; }
+ .learning-card .animation-result .route { font-size:12px; }
+}
