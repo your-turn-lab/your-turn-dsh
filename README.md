@@ -130,7 +130,13 @@ pnpm pack --dry-run
 
 ### Zhongkesong 2026 · 当前迭代
 
-当前阶段的成员与贡献将在实际工作发生后持续记录。
+本轮由罗清如、曹景怡、邓笑晗共同完成。以下按具体工作标识贡献；PPT、海报与现场演示均包含多人协作，不以仓库归属、最终文件编辑者或提交次数代替整体贡献。
+
+- **罗清如 · [@paperdinosaur](https://github.com/paperdinosaur)**：产品与项目推进、PPT 内容与基础稿、Demo 场景与演示制作；共同参与 PPT、海报和现场演示准备。
+- **曹景怡 · [@caracacara22](https://github.com/caracacara22)**：UI 与视觉设计、Figma 排版与动画、PPT 和海报设计制作；与团队共同完善最终呈现。
+- **邓笑晗 · [@HannahQwQ](https://github.com/HannahQwQ)**：本轮技术实现、召回策略与运行日志、Demo 技术验证与现场演示准备；参与 PPT 构图和展示素材制作。
+
+本节于 2026-09-20 补充。具体产物、证据与待补充项目见 [CONTRIBUTORS.md](CONTRIBUTORS.md)。人大初始原型的贡献记录继续保留在上节。
 
 ## 参与贡献
 
