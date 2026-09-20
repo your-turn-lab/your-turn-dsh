@@ -134,7 +134,7 @@ pnpm pack --dry-run
 
 - **罗清如 · [@paperdinosaur](https://github.com/paperdinosaur)**：产品与项目推进、PPT 内容与基础稿；完整负责魔搭可交互 Web Demo 的需求、代码实现、交互迭代与部署发布；负责录屏片段选择、剪辑调整和本地播放交付；共同参与 PPT、海报和现场演示准备。
 - **曹景怡 · [@caracacara22](https://github.com/caracacara22)**：UI 与视觉设计、Figma 排版与动画、PPT 和海报设计制作；与团队共同完善最终呈现。
-- **邓笑晗 · [@HannahQwQ](https://github.com/HannahQwQ)**：本轮插件技术实现、召回策略与运行日志；通过 Codex 接入和运行 GitHub 插件，提供两轮实际操作录屏（第二轮包含鼠标跟随动效）；参与 PPT 构图和现场演示准备。
+- **邓笑晗 · [@HannahQwQ](https://github.com/HannahQwQ)**：本轮插件技术实现、召回策略与运行日志；在 DSH 中运行 GitHub 插件，提供两轮实际操作录屏（第二轮包含鼠标跟随动效）；参与 PPT 构图和现场演示准备。
 
 魔搭可交互 Web Demo 与真实插件运行录屏是两套产物：前者由罗清如制作并部署，后者由邓笑晗实跑并录制，后期片段选择与剪辑交付由罗清如推进。
 

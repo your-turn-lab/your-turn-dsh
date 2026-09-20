@@ -15,17 +15,17 @@
 | --- | --- | --- |
 | 罗清如 / [paperdinosaur](https://github.com/paperdinosaur) | 产品与项目推进；PPT 内容、基础稿；完整负责魔搭可交互 Web Demo 的需求、代码实现、交互迭代和部署；负责录屏片段选择、时间码、剪辑调整和本地播放交付；共同参与 PPT、海报和现场演示准备 | Notion PPT 总控记录；[交互 Demo 初版](https://github.com/your-turn-lab/your-turn-dsh/commit/264caa45b0cb11eb4042586b72f400cf3a17171b)、[演示节奏与决策价值](https://github.com/your-turn-lab/your-turn-dsh/commit/09d9fd7a6e35f71a1ed3e8322959e82a598e1617)、[单屏演示迭代](https://github.com/your-turn-lab/your-turn-dsh/commit/4b4651bc9a01f28b58c1e6bbf6b3db2701043f03)、[结尾与判断变化动画](https://github.com/your-turn-lab/your-turn-dsh/commit/7afa598bdfff3b34ece5ec83baa1a17c2075d4ea) |
 | 曹景怡 / [caracacara22](https://github.com/caracacara22) | UI 与视觉设计；Figma 排版和动画；PPT、海报设计制作；共同完善最终呈现 | Notion PPT 总控记录。PPT、海报设计制作包含团队提供的内容、基础稿、构图和素材，不等同于整套材料由单人独立完成 |
-| 邓笑晗 / [HannahQwQ](https://github.com/HannahQwQ) | 本轮插件技术实现；召回策略与运行日志；通过 Codex 接入和运行 GitHub 插件，提供两轮实际操作录屏，第二轮包含鼠标跟随动效；参与 PPT 构图和现场演示准备 | Notion PPT 总控记录；[召回价值显式化](https://github.com/your-turn-lab/your-turn-dsh/commit/5d7d5c028b80b0276e3afc9a67347e5dedbd3d91)、[打断预算](https://github.com/your-turn-lab/your-turn-dsh/commit/1902447facc2a1b20dfab2901f8f87bdd1a9e88f)、[召回门控日志](https://github.com/your-turn-lab/your-turn-dsh/commit/dbc64d363f62e11d42b61fda8997b61cbe983202)、[冷启动偏好](https://github.com/your-turn-lab/your-turn-dsh/commit/513053c8eb2b4875b677e24810e11eb22b3b30d7) |
+| 邓笑晗 / [HannahQwQ](https://github.com/HannahQwQ) | 本轮插件技术实现；召回策略与运行日志；在 DSH 中运行 GitHub 插件，提供两轮实际操作录屏，第二轮包含鼠标跟随动效；参与 PPT 构图和现场演示准备 | Notion PPT 总控记录；[召回价值显式化](https://github.com/your-turn-lab/your-turn-dsh/commit/5d7d5c028b80b0276e3afc9a67347e5dedbd3d91)、[打断预算](https://github.com/your-turn-lab/your-turn-dsh/commit/1902447facc2a1b20dfab2901f8f87bdd1a9e88f)、[召回门控日志](https://github.com/your-turn-lab/your-turn-dsh/commit/dbc64d363f62e11d42b61fda8997b61cbe983202)、[冷启动偏好](https://github.com/your-turn-lab/your-turn-dsh/commit/513053c8eb2b4875b677e24810e11eb22b3b30d7) |
 
 协作依据：[Notion 中客松 PPT 总控](https://www.notion.so/3d89af9c792881099e9ad95fe827f34f)，需工作区访问权限。表中代码提交可公开核对；非代码协作依据工作区分工记录与本轮补充说明整理，欢迎成员在本次 PR 中补充产物链接和更正。
 
 ### 分开记录两套演示产物
 
 - **魔搭可交互 Web Demo**：[paperdinosaur/yourturn-demo](https://modelscope.cn/studios/paperdinosaur/yourturn-demo)。罗清如负责完整制作链，包括情境设计、代码实现、交互细化、问题修复与部署发布；使用 Codex 辅助实现。该独立 Web Demo 复用已有插件视觉与策略纯函数，由本地状态驱动，与插件实跑录屏分别记录。
-- **真实插件实跑与两轮录屏**：邓笑晗通过 Codex 接入和运行 GitHub 插件，提供首轮完整录屏与第二轮分段录屏；第二轮包含鼠标放大和画面跟随动效。不能把这部分写成魔搭 Web Demo 的制作或部署。
+- **真实插件实跑与两轮录屏**：邓笑晗在 DSH 中运行 GitHub 插件，提供首轮完整录屏与第二轮分段录屏；第二轮包含鼠标放大和画面跟随动效。不能把这部分写成魔搭 Web Demo 的制作或部署。
 - **录屏后期与演示交付**：罗清如确定七个片段、起止时间、保留动作、倍速与裁切要求，使用 Codex 辅助剪辑和整理交接包，完成视频嵌入及本地自动播放文件的调整。原始录制贡献与后期制作贡献分别保留。
 
-上述拆分依据 2026-09-12 至 09-13 的 Demo 部署与视频剪辑任务记录，以及 2026-09-20 的成员补充说明。运行方式按本轮确认记录为 Codex；旧交接文件中的 DSH 启动计划不被当作最终运行环境的独立证明。
+上述拆分依据 2026-09-12 至 09-13 的 Demo 部署与视频剪辑任务记录，以及 2026-09-20 的成员补充说明。按用户最新更正，邓笑晗在 DSH（DeepSeek Harness）中运行插件并录屏；此前将运行环境记为 Codex 是整理错误，现已纠正。
 
 ## 展示材料的统一署名
 
