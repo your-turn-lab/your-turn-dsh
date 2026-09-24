@@ -10,7 +10,7 @@
     "./cordis.patch.yml": "./cordis.patch.yml",
     "./package.json": "./package.json"
   },
-  "files": ["lib", "src", "cordis.patch.yml", "README.md", "LICENSE"],
+  "files": ["lib", "src", "cordis.patch.yml", "README.md", "CONTRIBUTORS.md", "LICENSE"],
   "dsh": {
     "bundle": { "patch": "./cordis.patch.yml" },
     "client": {
@@ -35,10 +35,15 @@
   },
   "keywords": ["deepseek", "harness", "dsh", "dsh-plugin", "human-in-the-loop", "ai-agent"],
   "author": "caracacara22",
+  "contributors": [
+    { "name": "罗清如", "url": "https://github.com/paperdinosaur" },
+    { "name": "曹景怡", "url": "https://github.com/caracacara22" },
+    { "name": "邓笑晗", "url": "https://github.com/HannahQwQ" }
+  ],
   "license": "MIT",
-  "repository": { "type": "git", "url": "git+https://github.com/caracacara22/your-turn-dsh.git" },
-  "homepage": "https://github.com/caracacara22/your-turn-dsh#readme",
-  "bugs": { "url": "https://github.com/caracacara22/your-turn-dsh/issues" },
+  "repository": { "type": "git", "url": "git+https://github.com/your-turn-lab/your-turn-dsh.git" },
+  "homepage": "https://github.com/your-turn-lab/your-turn-dsh#readme",
+  "bugs": { "url": "https://github.com/your-turn-lab/your-turn-dsh/issues" },
   "engines": { "node": ">=20", "dsh": "0.1.2-rc.1" },
   "packageManager": "pnpm@11.25.0",
   "peerDependencies": {
