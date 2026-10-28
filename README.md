@@ -128,9 +128,17 @@ pnpm pack --dry-run
 - **[@paperdinosaur](https://github.com/paperdinosaur)**：项目发起与产品主导。负责问题定义、整体产品方向与范围收敛、用户研究、项目推进、Demo 场景与路演。具体产品方案在这一框架下，与 @caracacara22 持续共同讨论和迭代决定。
 - **[@caracacara22](https://github.com/caracacara22)**：产品共创、设计与工程主力。参与产品方向与关键机制讨论，主要负责初版插件的技术实现、交互与视觉落地，并参与 Demo 与路演方案完善。
 
-### Zhongkesong 2026 · 当前迭代
+### Zhongkesong 2026 · 中客松阶段
 
-当前阶段的成员与贡献将在实际工作发生后持续记录。
+本轮插件基于人大 Build with Care 阶段的初版继续迭代。以下记录本轮实际贡献，人大阶段的完整贡献保留在上节 Renmin v1 中。
+
+- **[@paperdinosaur](https://github.com/paperdinosaur)**：产品方向与方案设计；用户研究、访谈及邀请两位用户试用；PPT 内容与基础稿、海报内容修改；魔搭交互 Demo 的设计、开发与部署；路演准备与交付。
+
+- **[@HannahQwQ](https://github.com/HannahQwQ)**：基于由 @caracacara22 主要负责工程实现的初版插件，负责本轮功能开发与优化，新增召回判断、打扰次数控制、用户偏好设置及相关界面调整；负责 DSH 实跑、两版录屏与演示视频剪辑，并参与 PPT 图示和技术内容完善。
+
+- **[@caracacara22](https://github.com/caracacara22)**：PPT、海报的视觉设计、排版、动画与最终整合；参与产品方案讨论和展示内容修改。
+
+魔搭交互 Demo 与 DSH 插件实跑演示分别记录：前者由 @paperdinosaur 设计、开发并部署；后者由 @HannahQwQ 运行、录屏并完成演示视频剪辑。PPT 与海报包含多轮共同修改。
 
 ## 参与贡献
 
